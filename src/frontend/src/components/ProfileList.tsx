@@ -79,15 +79,15 @@ export default function ProfileList() {
                   </div>
                 ) : (
                   <>
-                    <CardTitle className="text-lg">{idea.title}</CardTitle>
-                    <CardDescription className="line-clamp-2">{idea.description}</CardDescription>
+                    <CardTitle className="text-lg text-white">{idea.title}</CardTitle>
+                    <CardDescription className="line-clamp-2 text-white/80">{idea.description}</CardDescription>
                   </>
                 )}
               </div>
               <div className="ml-4 text-right">
-                <div className="text-sm text-muted-foreground">Upvotes</div>
-                <div className="text-xl font-semibold">{idea.upvote_count}</div>
-                <div className="text-sm text-muted-foreground mt-2">Rank #{idea.rank ?? '-'}</div>
+                <div className="text-sm text-white/70">Upvotes</div>
+                <div className="text-xl font-semibold text-white">{idea.upvote_count}</div>
+                <div className="text-sm text-white/70 mt-2">Rank #{idea.rank ?? '-'}</div>
               </div>
             </div>
           </CardHeader>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import logo from "../assets/logo.png";
 import { Link, useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Menu, X, User } from "lucide-react";
@@ -37,8 +38,8 @@ export default function Header() {
   <div className="flex justify-between items-center px-4 py-2 sm:px-6 md:px-10 relative">
         {/* Logo */}
         <Link to="/" className="flex items-center space-x-2 hover:opacity-90 transition">
-          <div className="relative">
-            <img src="/logo.png" alt="Gamesta" className="h-9 w-9 sm:h-10 sm:w-10 rounded-lg" />
+            <div className="relative">
+            <img src={logo} alt="Gamesta" className="h-9 w-9 sm:h-10 sm:w-10 rounded-lg" />
           </div>
           <span className="hidden sm:block text-xl font-semibold text-white">Gamesta</span>
         </Link>
