@@ -31,6 +31,7 @@ export default function Header() {
     { name: "Idea", href: "/submit" },
     { name: "Events", href: "/events" },
     { name: "Leaderboard", href: "/leaderboard" },
+    { name: "Registration", href: "/registration" },
   ];
 
   return (
