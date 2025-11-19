@@ -246,12 +246,12 @@ export default function RegistrationPage() {
 
                 <div className="mb-4">
                   <label className="text-xs text-gray-300">Name</label>
-                  <input value={name} readOnly className="w-full mt-2 px-3 py-2 rounded-lg bg-[#07060a]/40 border border-[#241f28] focus:outline-none text-gray-200" placeholder="" />
+                  <input value={name} onChange={(e) => setName(e.target.value)} className="w-full mt-2 px-3 py-2 rounded-lg bg-[#07060a]/60 border border-[#241f28] focus:outline-none text-gray-200" placeholder="Enter Name" />
                 </div>
 
                 <div className="mb-4">
                   <label className="text-xs text-gray-300">Email</label>
-                  <input value={email} readOnly className="w-full mt-2 px-3 py-2 rounded-lg bg-[#07060a]/40 border border-[#241f28] focus:outline-none text-gray-200" placeholder="" />
+                  <input value={email} onChange={(e) => setEmail(e.target.value)} className="w-full mt-2 px-3 py-2 rounded-lg bg-[#07060a]/60 border border-[#241f28] focus:outline-none text-gray-200" placeholder="Enter Email" />
                 </div>
 
                 <div className="mb-4">

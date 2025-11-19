@@ -1,7 +1,8 @@
-"use client";
-import React, { useEffect, useState } from 'react';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from './ui/Card';
-import { Button } from './ui/Button';
+
+import React, { useEffect, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "./ui/Card";
+import { Button } from "./ui/Button";
 
 interface IdeaItem {
   id: number;
@@ -19,8 +20,8 @@ export default function ProfileList() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [editTitle, setEditTitle] = useState<string>("");
-  const [editDescription, setEditDescription] = useState<string>("");
+  const [editTitle, setEditTitle] = useState("");
+  const [editDescription, setEditDescription] = useState("");
   const [saving, setSaving] = useState(false);
   const [revokingId, setRevokingId] = useState<number | null>(null);
 
@@ -29,18 +30,24 @@ export default function ProfileList() {
       setLoading(true);
       setError(null);
       try {
-        const token = typeof window !== 'undefined' ? sessionStorage.getItem('gamesta_token') : null;
-        const res = await fetch('/api/profile/ideas', {
+        const token =
+          typeof window !== "undefined"
+            ? sessionStorage.getItem("gamesta_token")
+            : null;
+
+        const res = await fetch("/api/profile/ideas", {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
+
         if (!res.ok) {
           const json = await res.json().catch(() => ({}));
-          throw new Error(json.error || 'Failed to load ideas');
+          throw new Error(json.error || "Failed to load ideas");
         }
+
         const json = await res.json();
         setIdeas(json.data || []);
       } catch (e: any) {
-        setError(e && e.message ? e.message : 'Unknown error');
+        setError(e?.message || "Unknown error");
       } finally {
         setLoading(false);
       }
@@ -48,134 +55,262 @@ export default function ProfileList() {
     load();
   }, []);
 
-  if (loading) return <div className="py-12 text-center">Loading your ideas…</div>;
-  if (error) return <div className="py-12 text-center text-destructive">Error: {error}</div>;
-  if (!ideas || ideas.length === 0) return <div className="py-12 text-center">You haven't submitted any ideas yet.</div>;
+  if (loading)
+    return (
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        className="py-12 text-center text-white/70 animate-pulse"
+      >
+        Loading your ideas…
+      </motion.div>
+    );
+
+  if (error)
+    return (
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        className="py-12 text-center text-red-400 font-semibold"
+      >
+        Error: {error}
+      </motion.div>
+    );
+
+  if (!ideas || ideas.length === 0)
+    return (
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        className="py-12 text-center text-white/70"
+      >
+        You haven't submitted any ideas yet.
+      </motion.div>
+    );
 
   return (
-    <div className="grid gap-4">
-      {ideas.map((idea) => (
-        <Card key={idea.id} className="p-4">
-          <CardHeader>
-            <div className="flex items-start justify-between">
-              <div className="flex-1">
-                {editingId === idea.id ? (
-                  <div className="space-y-2">
-                    <input
-                      value={editTitle}
-                      onChange={(e) => setEditTitle(e.target.value)}
-                      className="w-full px-3 py-2 rounded-md bg-white/10 border border-white/20 text-white"
-                      placeholder="Title"
-                      maxLength={120}
-                    />
-                    <textarea
-                      value={editDescription}
-                      onChange={(e) => setEditDescription(e.target.value)}
-                      className="w-full px-3 py-2 rounded-md bg-white/10 border border-white/20 text-white"
-                      placeholder="Description"
-                      rows={4}
-                      maxLength={500}
-                    />
+    <motion.div
+      className="grid gap-4"
+      initial="hidden"
+      animate="visible"
+      variants={{
+        hidden: { opacity: 0 },
+        visible: {
+          opacity: 1,
+          transition: { staggerChildren: 0.08 },
+        },
+      }}
+    >
+      <AnimatePresence>
+        {ideas.map((idea, idx) => (
+          <motion.div
+            key={idea.id}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            transition={{ duration: 0.4 }}
+            whileHover={{ scale: 1.01 }}
+          >
+            <Card className=" bg-gradient-to-br from-[#0b0a0d]/70 to-[#0f0c13]/60 border border-white/8 rounded-xl backdrop-blur-sm hover:border-pink-500/40 transition-all shadow-lg overflow-hidden relative group">
+              {/* Decorative top accent */}
+              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-pink-500/0 via-pink-500/40 to-purple-500/0 opacity-0 group-hover:opacity-100 transition-opacity" />
+
+              <CardHeader className="pb-3">
+                <div className="flex justify-between items-start gap-3">
+                  {/* Left: Title & Description */}
+                  <div className="flex-1 min-w-0">
+                    {editingId === idea.id ? (
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        className="space-y-2"
+                      >
+                        <input
+                          value={editTitle}
+                          onChange={(e) => setEditTitle(e.target.value)}
+                          className="w-full px-3 py-2 rounded-md bg-[#07060a]/60 border border-purple-600/30 text-white placeholder-white/40 focus:outline-none focus:border-pink-500/60"
+                          placeholder="Title"
+                          maxLength={120}
+                        />
+                        <textarea
+                          value={editDescription}
+                          onChange={(e) => setEditDescription(e.target.value)}
+                          className="w-full px-3 py-2 rounded-md bg-[#07060a]/60 border border-purple-600/30 text-white placeholder-white/40 focus:outline-none focus:border-pink-500/60 text-sm resize-none"
+                          placeholder="Description"
+                          rows={3}
+                          maxLength={500}
+                        />
+                      </motion.div>
+                    ) : (
+                      <>
+                        <CardTitle className="text-lg font-semibold text-white truncate">
+                          {idea.title}
+                        </CardTitle>
+                       <CardDescription
+  className="text-white/60 text-sm mt-1 line-clamp-2 w-64 whitespace-normal overflow-hidden"
+>
+  {idea.description}
+</CardDescription>
+
+                      </>
+                    )}
                   </div>
-                ) : (
-                  <>
-                    <CardTitle className="text-lg text-white">{idea.title}</CardTitle>
-                    <CardDescription className="line-clamp-2 text-white/80">{idea.description}</CardDescription>
-                  </>
-                )}
-              </div>
-              <div className="ml-4 text-right">
-                <div className="text-sm text-white/70">Upvotes</div>
-                <div className="text-xl font-semibold text-white">{idea.upvote_count}</div>
-                <div className="text-sm text-white/70 mt-2">Rank #{idea.rank ?? '-'}</div>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="flex gap-2 flex-wrap items-center">
-              {editingId === idea.id ? (
-                <>
-                  <Button
-                    size="sm"
-                    onClick={async () => {
-                      if (saving) return;
-                      const title = editTitle.trim();
-                      const description = editDescription.trim();
-                      if (title.length < 5) { alert('Title too short'); return; }
-                      if (description.length < 10) { alert('Description too short'); return; }
-                      if (description.length > 500) { alert('Description too long (max 500)'); return; }
-                      try {
-                        setSaving(true);
-                        const token = typeof window !== 'undefined' ? sessionStorage.getItem('gamesta_token') : null;
-                        const res = await fetch(`/api/ideas/${idea.id}`, {
-                          method: 'PATCH',
-                          headers: {
-                            'Content-Type': 'application/json',
-                            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-                          },
-                          body: JSON.stringify({ title, description }),
-                        });
-                        const json = await res.json().catch(() => ({}));
-                        if (!res.ok) throw new Error(json.error || 'Failed to update idea');
-                        // Update local state
-                        setIdeas((prev) => prev ? prev.map(i => i.id === idea.id ? { ...i, title, description } : i) : prev);
-                        setEditingId(null);
-                      } catch (e: any) {
-                        alert(e?.message || 'Failed to update idea');
-                      } finally {
-                        setSaving(false);
-                      }
-                    }}
+
+                  {/* Right: Score Badge */}
+                  <motion.div
+                   
+                    className="text-right bg-gradient-to-br from-pink-600/10 to-purple-600/10 px-3 py-2 rounded-lg border border-pink-500/20 flex-shrink-0"
                   >
-                    {saving ? 'Saving…' : 'Save'}
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={() => setEditingId(null)}>Cancel</Button>
-                </>
-              ) : (
-                <>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setEditingId(idea.id);
-                      setEditTitle(idea.title);
-                      setEditDescription(idea.description);
-                    }}
-                  >
-                    Edit
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={async () => {
-                      if (revokingId) return;
-                      const ok = confirm('Revoke this idea? This action cannot be undone.');
-                      if (!ok) return;
-                      try {
-                        setRevokingId(idea.id);
-                        const token = typeof window !== 'undefined' ? sessionStorage.getItem('gamesta_token') : null;
-                        const res = await fetch(`/api/ideas/${idea.id}`, {
-                          method: 'DELETE',
-                          headers: token ? { Authorization: `Bearer ${token}` } : {},
-                        });
-                        const json = await res.json().catch(() => ({}));
-                        if (!res.ok) throw new Error(json.error || 'Failed to revoke idea');
-                        setIdeas((prev) => prev ? prev.filter(i => i.id !== idea.id) : prev);
-                      } catch (e: any) {
-                        alert(e?.message || 'Failed to revoke idea');
-                      } finally {
-                        setRevokingId(null);
-                      }
-                    }}
-                  >
-                    {revokingId === idea.id ? 'Revoking…' : 'Revoke'}
-                  </Button>
-                </>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      ))}
-    </div>
+                    <div className="text-xs text-gray-300">Upvotes</div>
+                    <div className="text-2xl font-extrabold text-pink-400">
+                      {idea.upvote_count}
+                    </div>
+                    <div className="text-xs text-gray-400 mt-1">
+                      Rank #{idea.rank ?? "-"}
+                    </div>
+                  </motion.div>
+                </div>
+              </CardHeader>
+
+              <CardContent className="pt-2">
+                <div className="flex gap-2 flex-wrap">
+                  {editingId === idea.id ? (
+                    <>
+                      <motion.button
+                       
+                        whileTap={{ scale: 0.95 }}
+                        onClick={async () => {
+                          if (saving) return;
+
+                          const title = editTitle.trim();
+                          const description = editDescription.trim();
+
+                          if (title.length < 5) return alert("Title too short");
+                          if (description.length < 10)
+                            return alert("Description too short");
+                          if (description.length > 500)
+                            return alert("Description too long");
+
+                          try {
+                            setSaving(true);
+
+                            const token =
+                              typeof window !== "undefined"
+                                ? sessionStorage.getItem("gamesta_token")
+                                : null;
+
+                            const res = await fetch(`/api/ideas/${idea.id}`, {
+                              method: "PATCH",
+                              headers: {
+                                "Content-Type": "application/json",
+                                ...(token
+                                  ? { Authorization: `Bearer ${token}` }
+                                  : {}),
+                              },
+                              body: JSON.stringify({ title, description }),
+                            });
+
+                            const json = await res.json().catch(() => ({}));
+                            if (!res.ok)
+                              throw new Error(json.error || "Failed to update");
+
+                            setIdeas((prev) =>
+                              prev
+                                ? prev.map((i) =>
+                                    i.id === idea.id
+                                      ? { ...i, title, description }
+                                      : i
+                                  )
+                                : prev
+                            );
+
+                            setEditingId(null);
+                          } catch (e: any) {
+                            alert(e?.message || "Update failed");
+                          } finally {
+                            setSaving(false);
+                          }
+                        }}
+                        className="px-3 py-1 rounded-md text-sm bg-pink-500/90 text-black font-semibold hover:bg-pink-600"
+                      >
+                        {saving ? "Saving…" : "Save"}
+                      </motion.button>
+
+                      <motion.button
+                        
+                        whileTap={{ scale: 0.95 }}
+                        onClick={() => setEditingId(null)}
+                        className="px-3 py-1 rounded-md text-sm border border-purple-600/30 text-gray-200 hover:bg-purple-600/10"
+                      >
+                        Cancel
+                      </motion.button>
+                    </>
+                  ) : (
+                    <>
+                      <motion.button
+                       
+                        whileTap={{ scale: 0.95 }}
+                        onClick={() => {
+                          setEditingId(idea.id);
+                          setEditTitle(idea.title);
+                          setEditDescription(idea.description);
+                        }}
+                        className="px-3 py-1 rounded-md text-sm border border-purple-600/30 text-gray-200 hover:bg-purple-600/10 transition-all"
+                      >
+                        Edit
+                      </motion.button>
+
+                      <motion.button
+                       
+                        whileTap={{ scale: 0.95 }}
+                        onClick={async () => {
+                          if (revokingId) return;
+
+                          const ok = confirm(
+                            "Revoke this idea? This action cannot be undone."
+                          );
+                          if (!ok) return;
+
+                          try {
+                            setRevokingId(idea.id);
+
+                            const token =
+                              typeof window !== "undefined"
+                                ? sessionStorage.getItem("gamesta_token")
+                                : null;
+
+                            const res = await fetch(`/api/ideas/${idea.id}`, {
+                              method: "DELETE",
+                              headers: token
+                                ? { Authorization: `Bearer ${token}` }
+                                : {},
+                            });
+
+                            const json = await res.json().catch(() => ({}));
+                            if (!res.ok)
+                              throw new Error(json.error || "Failed to revoke");
+
+                            setIdeas((prev) =>
+                              prev ? prev.filter((i) => i.id !== idea.id) : prev
+                            );
+                          } catch (e: any) {
+                            alert(e?.message || "Failed to revoke");
+                          } finally {
+                            setRevokingId(null);
+                          }
+                        }}
+                        className="px-3 py-1 rounded-md text-sm border border-red-600/30 text-red-300 hover:bg-red-600/10 transition-all"
+                      >
+                        {revokingId === idea.id ? "Revoking…" : "Revoke"}
+                      </motion.button>
+                    </>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        ))}
+      </AnimatePresence>
+    </motion.div>
   );
 }

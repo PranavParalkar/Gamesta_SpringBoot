@@ -288,14 +288,23 @@ async function toggleVote(id) {
                           </CardHeader>
 
                           <CardContent>
-                            <CardDescription className="text-base text-gray-300 mb-4">
+                            <CardDescription
+                              className="text-base text-gray-300 mb-4 break-words overflow-hidden"
+                              style={{
+                                display: "-webkit-box",
+                                WebkitLineClamp: 4,
+                                WebkitBoxOrient: "vertical",
+                              }}
+                            >
                               {idea.description}
                             </CardDescription>
 
                             <div className="flex items-center justify-between pt-3 border-t border-white/10">
                              <motion.button
   onClick={() => toggleVote(idea.id)}
-  disabled={animating[idea.id] || votedIds.has(idea.id)}
+  disabled={animating[idea.id] || votedIds.has(idea.id
+    
+  )}
   className={`flex items-center gap-2 text-sm px-4 py-2 rounded-full
     ${votedIds.has(idea.id)
       ? "bg-green-500 cursor-not-allowed"
