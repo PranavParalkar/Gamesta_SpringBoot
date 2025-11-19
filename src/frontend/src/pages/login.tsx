@@ -9,6 +9,7 @@ import { Input } from '../components/ui/Input';
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
+  const [prn, setPrn] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -39,28 +40,49 @@ export default function LoginPage() {
     }
   }, [navigate]);
 
+  // Auto-lookup name/email when PRN is entered (12 digits)
+  useEffect(() => {
+    (async () => {
+      try {
+        const prnRegex = /^\d{12}$/;
+        if (!prnRegex.test(prn)) return;
+        const res = await fetch(`/api/auth/lookup?prn=${encodeURIComponent(prn)}`);
+        if (!res.ok) return;
+        const json = await res.json();
+        const data = json.data || {};
+        if (data.name) setName(data.name);
+        if (data.email) setEmail(data.email);
+      } catch (e) {
+        // ignore lookup errors
+      }
+    })();
+  }, [prn]);
+
   async function submit(e) {
     e.preventDefault();
     setError(null);
-
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!email || !emailRegex.test(email)) return setError('Please enter a valid email address');
-    const mitaoeDomainRegex = /@mitaoe\.ac\.in$/i;
+    if (authMode === 'login') {
+      if (!email || !emailRegex.test(email)) return setError('Please enter a valid email address');
+    }
     if (authMode === 'register') {
-      if (!mitaoeDomainRegex.test(email)) return setError('Please register with your MITAOE email (mitaoe.ac.in)');
-      const local = email.split('@')[0] || '';
       const prnRegex = /^\d{12}$/;
-      if (!prnRegex.test(local)) return setError('Use your 12-digit numeric PRN as the email local-part');
+      if (!prn || !prnRegex.test(prn)) return setError('Please enter a valid 12-digit PRN');
       if (!name || name.trim().length === 0) return setError('Please provide your name');
+      // allow email to be auto-filled or derived from PRN
+      if (!email) {
+        setEmail(`${prn}@mitaoe.ac.in`);
+      }
     }
     if (!password || password.length < 6) return setError('Password must be at least 6 characters');
 
     setLoading(true);
     try {
       const endpoint = authMode === 'login' ? '/api/auth/signin' : '/api/auth/signup';
+      const payloadEmail = authMode === 'register' && !email ? `${prn}@mitaoe.ac.in` : email;
       const res = await fetch(endpoint, { 
         method: 'POST', 
-        body: JSON.stringify({ email, password, name: name || email.split('@')[0] }), 
+        body: JSON.stringify({ email: payloadEmail, password, name: name || (prn || payloadEmail.split('@')[0]) }), 
         headers: { 'Content-Type': 'application/json' } 
       });
       if (res.ok) {
@@ -127,9 +149,19 @@ export default function LoginPage() {
                   {/* Registration Fields */}
                   {authMode === 'register' && (
                     <div className="space-y-4">
-                      <p className="text-xs text-white/60">
-                        Register with your MITAOE email only.
-                      </p>
+                      <p className="text-xs text-white/60">Register with your MITAOE account (enter PRN to auto-fill).</p>
+
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-white/80">PRN</label>
+                        <input
+                          type="text"
+                          placeholder="Enter your 12-digit PRN"
+                          value={prn}
+                          onChange={(e) => setPrn(e.target.value)}
+                          className="flex h-10 w-full rounded-md border border-white/30 bg-white/10 px-3 py-2 text-sm text-white placeholder:text-white/50 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        />
+                      </div>
+
                       <div className="space-y-2">
                         <label className="text-sm font-medium text-white/80">Full Name</label>
                         <input

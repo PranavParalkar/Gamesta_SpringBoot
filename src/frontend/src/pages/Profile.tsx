@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import PrismaticBurst from "../components/ui/PrismaticBurst";
 import ProfileList from "../components/ProfileList";
+import EventsList from "../components/EventsList";
 import { motion } from "framer-motion";
 
 export default function ProfilePage() {
@@ -71,8 +72,19 @@ export default function ProfilePage() {
           <div className="relative">
             {/* Floating glow aura */}
             <div className="absolute inset-0 bg-gradient-to-br from-purple-600/20 to-pink-500/20 blur-3xl rounded-3xl animate-pulse" />
-            <div className="relative bg-black/40 backdrop-blur-xl border border-white/10 rounded-3xl shadow-[0_0_25px_rgba(255,255,255,0.1)] p-8 transition-all duration-500 hover:shadow-[0_0_45px_rgba(123,58,255,0.6)]">
-              <ProfileList />
+            <div className="relative grid grid-cols-1 lg:grid-cols-2 gap-6 bg-black/40 rounded-3xl p-6 border border-white/10">
+              <div className="p-4">
+                <h2 className="text-2xl font-semibold text-white mb-4">My Ideas</h2>
+                <ProfileList />
+              </div>
+              <div className="p-4">
+                <h2 className="text-2xl font-semibold text-white mb-4">Events Registered</h2>
+                {/* Lazy-load EventsList component */}
+                <React.Suspense fallback={<div className="text-center py-8">Loading events…</div>}>
+                  {/* @ts-ignore */}
+                  <EventsList />
+                </React.Suspense>
+              </div>
             </div>
           </div>
         </motion.div>

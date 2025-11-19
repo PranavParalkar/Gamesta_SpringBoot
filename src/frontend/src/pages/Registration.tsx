@@ -25,7 +25,7 @@ export default function RegistrationPage() {
   const [selectedEvents, setSelectedEvents] = useState<string[]>([]);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [roll, setRoll] = useState("");
+  const [prn, setPrn] = useState("");
   const [success, setSuccess] = useState<null | { id: number; msg: string }>(
     null
   );
@@ -37,23 +37,134 @@ export default function RegistrationPage() {
     .filter((e) => selectedEvents.includes(e.name))
     .reduce((s, e) => s + e.price, 0);
 
-  const submitRegistration = () => {
-    if (!name.trim() || !email.trim() || !roll.trim() || selectedEvents.length === 0) {
-      setSuccess({ id: Date.now(), msg: "Fill name, email, roll and select ≥1 event" });
+  // Auto-lookup name/email from backend when PRN is provided
+  React.useEffect(() => {
+    const prnRegex = /^\d{12}$/;
+    (async () => {
+      try {
+        if (!prnRegex.test(prn)) return;
+        const res = await fetch(`/api/auth/lookup?prn=${encodeURIComponent(prn)}`);
+        if (!res.ok) return;
+        const json = await res.json().catch(() => ({}));
+        const data = json.data || {};
+        if (data.name) setName(data.name);
+        if (data.email) setEmail(data.email);
+      } catch (e) {
+        // ignore
+      }
+    })();
+  }, [prn]);
+
+  const loadRazorpayScript = (): Promise<boolean> => {
+    return new Promise((resolve) => {
+      if ((window as any).Razorpay) return resolve(true);
+      const script = document.createElement("script");
+      script.src = "https://checkout.razorpay.com/v1/checkout.js";
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+      document.body.appendChild(script);
+    });
+  };
+
+  const submitRegistration = async () => {
+    if (!prn.trim() || selectedEvents.length === 0) {
+      setSuccess({ id: Date.now(), msg: "Provide PRN and select ≥1 event" });
+      setTimeout(() => setSuccess(null), 2500);
+      return;
+    }
+    if (!name.trim() || !email.trim()) {
+      setSuccess({ id: Date.now(), msg: "Unable to lookup name/email for PRN" });
       setTimeout(() => setSuccess(null), 2500);
       return;
     }
 
-    // simulate server action
-    console.log("Registering:", { name, email, roll, events: selectedEvents, total: totalPrice });
+    try {
+      // create order on server
+      const createRes = await fetch(`/api/payment/create-order`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ total: totalPrice }),
+      });
+      if (!createRes.ok) {
+        const err = await createRes.json().catch(() => ({}));
+        setSuccess({ id: Date.now(), msg: `Failed to create order: ${err?.error || createRes.statusText}` });
+        setTimeout(() => setSuccess(null), 3500);
+        return;
+      }
+      const payData = await createRes.json();
 
-    setSuccess({ id: Date.now(), msg: `Registered ${selectedEvents.length} event(s). Paid ₹${totalPrice}` });
-    // clear selection + form
-    setSelectedEvents([]);
-    setName("");
-    setEmail("");
-    setRoll("");
-    setTimeout(() => setSuccess(null), 3500);
+      const loaded = await loadRazorpayScript();
+      if (!loaded) {
+        setSuccess({ id: Date.now(), msg: "Failed to load payment library" });
+        setTimeout(() => setSuccess(null), 3500);
+        return;
+      }
+
+      const options: any = {
+        key: payData.key,
+        amount: payData.amount,
+        currency: payData.currency || "INR",
+        name: "Gamesta Events",
+        description: `${selectedEvents.length} events registration`,
+        order_id: payData.orderId,
+        handler: async function (response: RazorpayResponse) {
+          // verify on server
+          try {
+            const v = await fetch(`/api/payment/verify`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(response),
+            });
+            const verified = await v.json().catch(() => ({}));
+            if (!v.ok) {
+              setSuccess({ id: Date.now(), msg: `Payment verification failed: ${verified?.error || v.statusText}` });
+            } else {
+              // Persist event registrations
+              try {
+                const token = typeof window !== 'undefined' ? sessionStorage.getItem('gamesta_token') : null;
+                const regRes = await fetch('/api/profile/events/register', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    ...(token ? { Authorization: `Bearer ${token}` } : {})
+                  },
+                  body: JSON.stringify({
+                    events: selectedEvents,
+                    paymentId: verified.paymentId || response.razorpay_payment_id,
+                    orderId: verified.orderId || response.razorpay_order_id
+                  })
+                });
+                const regJson = await regRes.json().catch(() => ({}));
+                if (regRes.ok) {
+                  setSuccess({ id: Date.now(), msg: `Payment + ${regJson.count || selectedEvents.length} event(s) saved!` });
+                } else {
+                  setSuccess({ id: Date.now(), msg: `Payment ok but events save failed` });
+                }
+              } catch (e) {
+                setSuccess({ id: Date.now(), msg: 'Payment ok but registration error' });
+              }
+              // clear form
+              setSelectedEvents([]);
+              setName('');
+              setEmail('');
+              setPrn('');
+            }
+            setTimeout(() => setSuccess(null), 4500);
+          } catch (err) {
+            setSuccess({ id: Date.now(), msg: `Verification error` });
+            setTimeout(() => setSuccess(null), 3500);
+          }
+        },
+        prefill: { name, email },
+        theme: { color: "#7c3aed" },
+      };
+
+      const rzp = new (window as any).Razorpay(options);
+      rzp.open();
+    } catch (err) {
+      setSuccess({ id: Date.now(), msg: "Unexpected error starting payment" });
+      setTimeout(() => setSuccess(null), 3500);
+    }
   };
 
   return (
@@ -135,17 +246,17 @@ export default function RegistrationPage() {
 
                 <div className="mb-4">
                   <label className="text-xs text-gray-300">Name</label>
-                  <input value={name} onChange={(e) => setName(e.target.value)} className="w-full mt-2 px-3 py-2 rounded-lg bg-[#07060a]/60 border border-[#241f28] focus:outline-none" placeholder="Your full name" />
+                  <input value={name} readOnly className="w-full mt-2 px-3 py-2 rounded-lg bg-[#07060a]/40 border border-[#241f28] focus:outline-none text-gray-200" placeholder="" />
                 </div>
 
                 <div className="mb-4">
                   <label className="text-xs text-gray-300">Email</label>
-                  <input value={email} onChange={(e) => setEmail(e.target.value)} className="w-full mt-2 px-3 py-2 rounded-lg bg-[#07060a]/60 border border-[#241f28] focus:outline-none" placeholder="you@college.edu" />
+                  <input value={email} readOnly className="w-full mt-2 px-3 py-2 rounded-lg bg-[#07060a]/40 border border-[#241f28] focus:outline-none text-gray-200" placeholder="" />
                 </div>
 
                 <div className="mb-4">
-                  <label className="text-xs text-gray-300">Roll No.</label>
-                  <input value={roll} onChange={(e) => setRoll(e.target.value)} className="w-full mt-2 px-3 py-2 rounded-lg bg-[#07060a]/60 border border-[#241f28] focus:outline-none" placeholder="eg. 12345" />
+                  <label className="text-xs text-gray-300">PRN</label>
+                  <input value={prn} onChange={(e) => setPrn(e.target.value)} className="w-full mt-2 px-3 py-2 rounded-lg bg-[#07060a]/60 border border-[#241f28] focus:outline-none" placeholder="Enter your 12-digit PRN" />
                 </div>
 
                 <div className="mb-4">
