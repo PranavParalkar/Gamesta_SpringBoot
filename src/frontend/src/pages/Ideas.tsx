@@ -13,6 +13,10 @@ import {
 } from "../components/ui/Card";
 import { FaFire } from "react-icons/fa";
 import { BiUpArrowAlt } from "react-icons/bi";
+import { useSocket } from "../hooks/useSocket";
+import CommentsSidebar from "../components/CommentsSidebar";
+import { Socket } from "socket.io-client";
+import { FaComment } from "react-icons/fa";
 
 // -----------------------------
 // Fetcher (same as original)
@@ -38,12 +42,22 @@ export default function IdeasPageWithTimeline() {
   const [sort, setSort] = useState("popular");
   const [showTimeline, setShowTimeline] = useState(false);
   const [selectedDay, setSelectedDay] = useState(new Date());
+  const [commentsSidebarOpen, setCommentsSidebarOpen] = useState(false);
+  const [selectedIdeaId, setSelectedIdeaId] = useState<number | null>(null);
+  const [selectedIdeaTitle, setSelectedIdeaTitle] = useState<string | null>(null);
 
   // refs for scrolling to idea cards
   const ideaRefs = useRef({});
 
   // track which idea ids the current user has voted for (client-side set)
   const [votedIds, setVotedIds] = useState(new Set());
+
+  // Socket.io connection
+  const token =
+    typeof window !== "undefined"
+      ? sessionStorage.getItem("gamesta_token")
+      : null;
+  const socket = useSocket(token);
 
 async function toggleVote(id) {
   const token = typeof window !== "undefined"
@@ -124,6 +138,49 @@ async function toggleVote(id) {
     });
     setVotedIds(s);
   }, [ideasData]);
+
+  // Listen for real-time vote updates via Socket.io
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleVoteUpdate = (data: { idea_id: number; score: number; upvote_count: number }) => {
+      mutate(
+        (current) => {
+          if (!current?.data) return current;
+          return {
+            ...current,
+            data: current.data.map((idea) =>
+              idea.id === data.idea_id
+                ? { ...idea, score: data.score, upvoteCount: data.upvote_count }
+                : idea
+            ),
+          };
+        },
+        { revalidate: false }
+      );
+    };
+
+    socket.on("vote_update", handleVoteUpdate);
+
+    return () => {
+      socket.off("vote_update", handleVoteUpdate);
+    };
+  }, [socket, mutate]);
+
+  const openCommentsSidebar = (ideaId: number, ideaTitle: string) => {
+    setSelectedIdeaId(ideaId);
+    setSelectedIdeaTitle(ideaTitle);
+    setCommentsSidebarOpen(true);
+  };
+
+  const closeCommentsSidebar = () => {
+    setCommentsSidebarOpen(false);
+    // Small delay before clearing to allow exit animation
+    setTimeout(() => {
+      setSelectedIdeaId(null);
+      setSelectedIdeaTitle(null);
+    }, 300);
+  };
 
   const sortedIdeas =
     ideasData?.data?.slice().sort((a, b) =>
@@ -288,7 +345,7 @@ async function toggleVote(id) {
                           </CardHeader>
 
                           <CardContent>
-                            <CardDescription
+                            <div
                               className="text-base text-gray-300 mb-4 break-words overflow-hidden"
                               style={{
                                 display: "-webkit-box",
@@ -297,25 +354,35 @@ async function toggleVote(id) {
                               }}
                             >
                               {idea.description}
-                            </CardDescription>
+                            </div>
 
-                            <div className="flex items-center justify-between pt-3 border-t border-white/10">
-                             <motion.button
-  onClick={() => toggleVote(idea.id)}
-  disabled={animating[idea.id] || votedIds.has(idea.id
-    
-  )}
-  className={`flex items-center gap-2 text-sm px-4 py-2 rounded-full
-    ${votedIds.has(idea.id)
-      ? "bg-green-500 cursor-not-allowed"
-      : "bg-gradient-to-r from-purple-500 to-pink-500 hover:scale-105"
-    }`}
->
-  {votedIds.has(idea.id) ? "Voted" : "Upvote"}
-</motion.button>
+                            <div className="space-y-3">
+                              <div className="flex items-center justify-between pt-3 border-t border-white/10">
+                                <motion.button
+                                  onClick={() => toggleVote(idea.id)}
+                                  disabled={animating[idea.id] || votedIds.has(idea.id)}
+                                  className={`flex items-center gap-2 text-sm px-4 py-2 rounded-full transition-all
+                                    ${votedIds.has(idea.id)
+                                      ? "bg-green-500 cursor-not-allowed"
+                                      : "bg-gradient-to-r from-purple-500 to-pink-500 hover:scale-105"
+                                    }`}
+                                >
+                                  {votedIds.has(idea.id) ? "Voted" : "Upvote"}
+                                </motion.button>
 
-
-                              <span className="text-xs text-gray-400">#{index + 1}</span>
+                                <div className="flex items-center gap-3">
+                                  <motion.button
+                                    onClick={() => openCommentsSidebar(idea.id, idea.title)}
+                                    whileHover={{ scale: 1.05 }}
+                                    whileTap={{ scale: 0.95 }}
+                                    className="flex items-center gap-2 text-sm px-4 py-2 rounded-full bg-gradient-to-r from-purple-500/20 to-pink-500/20 hover:from-purple-500/30 hover:to-pink-500/30 text-purple-200 hover:text-white border border-purple-500/30 hover:border-purple-400/50 transition-all"
+                                  >
+                                    <FaComment className="text-xs" />
+                                    <span>Comments</span>
+                                  </motion.button>
+                                  <span className="text-xs text-gray-400">#{index + 1}</span>
+                                </div>
+                              </div>
                             </div>
                           </CardContent>
                         </Card>
@@ -330,6 +397,16 @@ async function toggleVote(id) {
           </div>
         </main>
       </div>
+
+      {/* Comments Sidebar */}
+      <CommentsSidebar
+        isOpen={commentsSidebarOpen}
+        onClose={closeCommentsSidebar}
+        ideaId={selectedIdeaId}
+        ideaTitle={selectedIdeaTitle}
+        socket={socket}
+        token={token}
+      />
     </div>
   );
 }

@@ -8,6 +8,7 @@ import com.project.gamesta.repository.IdeaRepository;
 import com.project.gamesta.repository.UserRepository;
 import com.project.gamesta.service.IdeaService;
 import com.project.gamesta.service.VoteService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -21,6 +22,9 @@ public class IdeaController {
     private final VoteService voteService;
     private final UserRepository userRepository;
     private final AuthTokenRepository tokenRepository;
+    
+    @Autowired(required = false)
+    private SocketIOController socketIOController;
 
     public IdeaController(IdeaService ideaService, VoteService voteService, UserRepository userRepository, AuthTokenRepository tokenRepository) {
         this.ideaService = ideaService;
@@ -86,12 +90,24 @@ public class IdeaController {
             idea.setUpvoteCount(Math.max(0, idea.getUpvoteCount() - 1));
             idea.setScore(Math.max(0, idea.getScore() - 1));
             ideaService.save(idea);
+            
+            // Emit real-time vote update
+            if (socketIOController != null) {
+                socketIOController.emitVoteUpdate(id, idea.getScore(), idea.getUpvoteCount());
+            }
+            
             return ResponseEntity.ok(Map.of("stats", Map.of("score", idea.getScore())));
         } else {
             voteService.createVote(idea, user, voteValue);
             idea.setUpvoteCount(idea.getUpvoteCount() + 1);
             idea.setScore(idea.getScore() + voteValue);
             ideaService.save(idea);
+            
+            // Emit real-time vote update
+            if (socketIOController != null) {
+                socketIOController.emitVoteUpdate(id, idea.getScore(), idea.getUpvoteCount());
+            }
+            
             return ResponseEntity.ok(Map.of("stats", Map.of("score", idea.getScore())));
         }
     }

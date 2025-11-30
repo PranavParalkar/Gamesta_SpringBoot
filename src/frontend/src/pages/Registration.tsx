@@ -1,6 +1,7 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import PrismaticBurst from "../components/ui/PrismaticBurst";
+import { FaCheckCircle, FaStar, FaTrophy, FaRocket } from "react-icons/fa";
 
 const eventsWithPrice = [
   { name: "BGMI Tournament", price: 200 },
@@ -29,6 +30,8 @@ export default function RegistrationPage() {
   const [success, setSuccess] = useState<null | { id: number; msg: string }>(
     null
   );
+  const [showCelebration, setShowCelebration] = useState(false);
+  const [loadingUserData, setLoadingUserData] = useState(false);
 
   const toggleEvent = (name: string) =>
     setSelectedEvents((prev) => (prev.includes(name) ? prev.filter((p) => p !== name) : [...prev, name]));
@@ -37,23 +40,51 @@ export default function RegistrationPage() {
     .filter((e) => selectedEvents.includes(e.name))
     .reduce((s, e) => s + e.price, 0);
 
-  // Auto-lookup name/email from backend when PRN is provided
-  React.useEffect(() => {
+  // Fetch user data from profile API on component mount
+  useEffect(() => {
+    const token = typeof window !== "undefined" ? sessionStorage.getItem("gamesta_token") : null;
+    if (!token) return;
+
+    setLoadingUserData(true);
+    (async () => {
+      try {
+        const res = await fetch(`/api/profile`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const json = await res.json();
+          const userData = json?.user || {};
+          // Only populate if fields are empty (allow user to edit)
+          if (userData.name && !name) setName(userData.name);
+          if (userData.email && !email) setEmail(userData.email);
+        }
+      } catch (e) {
+        // ignore errors
+      } finally {
+        setLoadingUserData(false);
+      }
+    })();
+  }, []); // Only run once on mount
+
+  // Auto-lookup name/email from backend when PRN is provided (fallback)
+  useEffect(() => {
     const prnRegex = /^\d{12}$/;
     (async () => {
       try {
         if (!prnRegex.test(prn)) return;
+        // Only lookup if name/email are still empty
+        if (name && email) return;
         const res = await fetch(`/api/auth/lookup?prn=${encodeURIComponent(prn)}`);
         if (!res.ok) return;
         const json = await res.json().catch(() => ({}));
         const data = json.data || {};
-        if (data.name) setName(data.name);
-        if (data.email) setEmail(data.email);
+        if (data.name && !name) setName(data.name);
+        if (data.email && !email) setEmail(data.email);
       } catch (e) {
         // ignore
       }
     })();
-  }, [prn]);
+  }, [prn, name, email]);
 
   const loadRazorpayScript = (): Promise<boolean> => {
     return new Promise((resolve) => {
@@ -107,7 +138,7 @@ export default function RegistrationPage() {
         name: "Gamesta Events",
         description: `${selectedEvents.length} events registration`,
         order_id: payData.orderId,
-        handler: async function (response: RazorpayResponse) {
+        handler: async function (response: any) {
           // verify on server
           try {
             const v = await fetch(`/api/payment/verify`, {
@@ -136,18 +167,25 @@ export default function RegistrationPage() {
                 });
                 const regJson = await regRes.json().catch(() => ({}));
                 if (regRes.ok) {
+                  // Trigger celebration animation
+                  setShowCelebration(true);
+                  setTimeout(() => setShowCelebration(false), 3000);
+                  
                   setSuccess({ id: Date.now(), msg: `Payment + ${regJson.count || selectedEvents.length} event(s) saved!` });
+                  
+                  // clear form after a delay
+                  setTimeout(() => {
+                    setSelectedEvents([]);
+                    setName('');
+                    setEmail('');
+                    setPrn('');
+                  }, 1000);
                 } else {
                   setSuccess({ id: Date.now(), msg: `Payment ok but events save failed` });
                 }
               } catch (e) {
                 setSuccess({ id: Date.now(), msg: 'Payment ok but registration error' });
               }
-              // clear form
-              setSelectedEvents([]);
-              setName('');
-              setEmail('');
-              setPrn('');
             }
             setTimeout(() => setSuccess(null), 4500);
           } catch (err) {
@@ -169,6 +207,166 @@ export default function RegistrationPage() {
 
   return (
     <div className="min-h-screen w-full text-white relative overflow-hidden bg-[#07060a]">
+      {/* Celebration Animation */}
+      <AnimatePresence>
+        {showCelebration && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] pointer-events-none flex items-center justify-center"
+          >
+            {/* Background overlay */}
+            <motion.div
+              initial={{ scale: 0, opacity: 0 }}
+              animate={{ scale: 1, opacity: 0.95 }}
+              exit={{ scale: 1.2, opacity: 0 }}
+              transition={{ duration: 0.6 }}
+              className="absolute inset-0 bg-gradient-to-br from-purple-600/90 via-pink-600/90 to-cyan-600/90 backdrop-blur-xl"
+            />
+            
+            {/* Celebration content */}
+            <div className="relative z-10 text-center px-4">
+              {/* Trophy Icon */}
+              <motion.div
+                initial={{ scale: 0, rotate: -180, y: -50 }}
+                animate={{ scale: 1, rotate: 0, y: 0 }}
+                exit={{ scale: 0, rotate: 180, y: 50 }}
+                transition={{
+                  type: "spring",
+                  damping: 15,
+                  stiffness: 200,
+                  delay: 0.1,
+                }}
+                className="mb-6"
+              >
+                <div className="w-40 h-40 mx-auto rounded-full bg-gradient-to-br from-yellow-400 via-pink-500 to-purple-500 flex items-center justify-center shadow-2xl">
+                  <FaTrophy className="text-white text-7xl" />
+                </div>
+              </motion.div>
+              
+              {/* Success Checkmark */}
+              <motion.div
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                exit={{ scale: 0 }}
+                transition={{
+                  type: "spring",
+                  damping: 12,
+                  stiffness: 200,
+                  delay: 0.3,
+                }}
+                className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32"
+              >
+                <div className="w-full h-full rounded-full bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center shadow-2xl">
+                  <FaCheckCircle className="text-white text-6xl" />
+                </div>
+              </motion.div>
+              
+              {/* Main Title */}
+              <motion.h2
+                initial={{ y: 50, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                exit={{ y: -50, opacity: 0 }}
+                transition={{ delay: 0.4, type: "spring", damping: 20 }}
+                className="text-6xl md:text-7xl font-extrabold mb-4 bg-clip-text text-transparent bg-gradient-to-r from-yellow-300 via-pink-300 to-purple-300"
+              >
+                Registration Successful! 🎉
+              </motion.h2>
+              
+              {/* Subtitle */}
+              <motion.p
+                initial={{ y: 30, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                exit={{ y: -30, opacity: 0 }}
+                transition={{ delay: 0.5 }}
+                className="text-2xl md:text-3xl text-purple-100 mb-2"
+              >
+                You're all set for {selectedEvents.length} {selectedEvents.length === 1 ? 'event' : 'events'}!
+              </motion.p>
+              
+              <motion.p
+                initial={{ y: 20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                exit={{ y: -20, opacity: 0 }}
+                transition={{ delay: 0.6 }}
+                className="text-xl text-cyan-200"
+              >
+                Get ready for an amazing experience! 🚀
+              </motion.p>
+              
+              {/* Floating stars and rockets */}
+              {[...Array(16)].map((_, i) => (
+                <motion.div
+                  key={i}
+                  initial={{ 
+                    scale: 0,
+                    x: 0,
+                    y: 0,
+                    opacity: 1,
+                    rotate: 0,
+                  }}
+                  animate={{
+                    scale: [0, 1.5, 0],
+                    x: Math.cos((i * Math.PI * 2) / 16) * 300,
+                    y: Math.sin((i * Math.PI * 2) / 16) * 300,
+                    opacity: [1, 1, 0],
+                    rotate: 360,
+                  }}
+                  transition={{
+                    duration: 2,
+                    delay: 0.7 + i * 0.05,
+                    ease: "easeOut",
+                  }}
+                  className="absolute top-1/2 left-1/2"
+                >
+                  {i % 3 === 0 ? (
+                    <FaRocket className="text-cyan-300 text-2xl" />
+                  ) : (
+                    <FaStar className="text-yellow-300 text-2xl" />
+                  )}
+                </motion.div>
+              ))}
+              
+              {/* Confetti effect */}
+              {typeof window !== "undefined" && [...Array(20)].map((_, i) => {
+                const randomX = Math.random() * (window.innerWidth || 1920);
+                const randomY = (window.innerHeight || 1080) + 100;
+                const colors = ['#ff5ec8', '#8f5bff', '#00f6ff', '#ffd700', '#ff6b6b'];
+                return (
+                  <motion.div
+                    key={`confetti-${i}`}
+                    initial={{ 
+                      y: -100,
+                      x: randomX,
+                      opacity: 1,
+                      rotate: 0,
+                    }}
+                    animate={{
+                      y: randomY,
+                      x: randomX + (Math.random() - 0.5) * 200,
+                      opacity: [1, 1, 0],
+                      rotate: 360,
+                    }}
+                    transition={{
+                      duration: 2 + Math.random(),
+                      delay: 0.8 + Math.random() * 0.5,
+                      ease: "easeIn",
+                    }}
+                    className="absolute top-0"
+                    style={{
+                      width: 10 + Math.random() * 10,
+                      height: 10 + Math.random() * 10,
+                      backgroundColor: colors[Math.floor(Math.random() * colors.length)],
+                    }}
+                  />
+                );
+              })}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="absolute inset-0 mix-blend-screen opacity-70 z-0 pointer-events-none">
         <PrismaticBurst intensity={0.55} speed={0.6} animationType="rotate3d" colors={["#ff5ec8", "#8f5bff", "#00f6ff"]} />
       </div>
@@ -245,13 +443,44 @@ export default function RegistrationPage() {
                 <h2 className="text-xl font-bold mb-3 bg-clip-text text-transparent bg-gradient-to-r from-pink-500 to-cyan-400">Checkout</h2>
 
                 <div className="mb-4">
-                  <label className="text-xs text-gray-300">Name</label>
-                  <input value={name} onChange={(e) => setName(e.target.value)} className="w-full mt-2 px-3 py-2 rounded-lg bg-[#07060a]/60 border border-[#241f28] focus:outline-none text-gray-200" placeholder="Enter Name" />
+                  <label className="text-xs text-gray-300 flex items-center gap-2">
+                    Name
+                    {loadingUserData && (
+                      <motion.div
+                        animate={{ rotate: 360 }}
+                        transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                        className="w-3 h-3 border-2 border-purple-500 border-t-transparent rounded-full"
+                      />
+                    )}
+                  </label>
+                  <motion.input
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    whileFocus={{ scale: 1.02, borderColor: "#a855f7" }}
+                    className="w-full mt-2 px-3 py-2 rounded-lg bg-[#07060a]/60 border border-[#241f28] focus:outline-none focus:ring-2 focus:ring-purple-500/50 text-gray-200 transition-all"
+                    placeholder="Enter Name"
+                  />
                 </div>
 
                 <div className="mb-4">
-                  <label className="text-xs text-gray-300">Email</label>
-                  <input value={email} onChange={(e) => setEmail(e.target.value)} className="w-full mt-2 px-3 py-2 rounded-lg bg-[#07060a]/60 border border-[#241f28] focus:outline-none text-gray-200" placeholder="Enter Email" />
+                  <label className="text-xs text-gray-300 flex items-center gap-2">
+                    Email
+                    {loadingUserData && (
+                      <motion.div
+                        animate={{ rotate: 360 }}
+                        transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                        className="w-3 h-3 border-2 border-purple-500 border-t-transparent rounded-full"
+                      />
+                    )}
+                  </label>
+                  <motion.input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    whileFocus={{ scale: 1.02, borderColor: "#a855f7" }}
+                    className="w-full mt-2 px-3 py-2 rounded-lg bg-[#07060a]/60 border border-[#241f28] focus:outline-none focus:ring-2 focus:ring-purple-500/50 text-gray-200 transition-all"
+                    placeholder="Enter Email"
+                  />
                 </div>
 
                 <div className="mb-4">
