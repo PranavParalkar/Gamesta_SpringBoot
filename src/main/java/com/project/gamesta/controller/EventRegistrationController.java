@@ -5,6 +5,7 @@ import com.project.gamesta.model.User;
 import com.project.gamesta.repository.AuthTokenRepository;
 import com.project.gamesta.repository.EventRegistrationRepository;
 import org.springframework.http.ResponseEntity;
+import com.project.gamesta.service.EmailService;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.*;
@@ -14,6 +15,7 @@ import java.util.*;
 public class EventRegistrationController {
     private final AuthTokenRepository tokenRepository;
     private final EventRegistrationRepository eventRepo;
+    private final EmailService emailService;
 
     private static final Map<String, Integer> PRICE_MAP = Map.ofEntries(
             Map.entry("BGMI Tournament", 200),
@@ -34,9 +36,10 @@ public class EventRegistrationController {
             Map.entry("Valorant Tournament", 220)
     );
 
-    public EventRegistrationController(AuthTokenRepository tokenRepository, EventRegistrationRepository eventRepo) {
+    public EventRegistrationController(AuthTokenRepository tokenRepository, EventRegistrationRepository eventRepo, EmailService emailService) {
         this.tokenRepository = tokenRepository;
         this.eventRepo = eventRepo;
+        this.emailService = emailService;
     }
 
     private User resolveUser(String authHeader) {
@@ -97,6 +100,11 @@ public class EventRegistrationController {
             Integer price = PRICE_MAP.getOrDefault(name, null);
             saved.add(eventRepo.save(new EventRegistration(user, name, price, paymentId, orderId)));
         }
+        try {
+            Integer totalAmount = saved.stream().map(EventRegistration::getPrice).filter(Objects::nonNull).reduce(0, Integer::sum);
+            List<String> evNames = saved.stream().map(EventRegistration::getEventName).toList();
+            emailService.sendRegistrationConfirmation(user.getEmail(), user.getName(), evNames, orderId, paymentId, totalAmount);
+        } catch (Exception ignored) {}
         return ResponseEntity.ok(Map.of("status","ok","count", saved.size()));
     }
 }

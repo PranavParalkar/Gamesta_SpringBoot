@@ -19,9 +19,14 @@ public class SocketIOEventListener {
     @PostConstruct
     public void start() {
         // Register event listeners
-        socketIOServer.addListeners(socketIOController);
-        socketIOServer.start();
-        System.out.println("Socket.io server started on port: " + socketIOServer.getConfiguration().getPort());
+        try {
+            socketIOServer.addListeners(socketIOController);
+            socketIOServer.start();
+            System.out.println("Socket.io server started on port: " + socketIOServer.getConfiguration().getPort());
+        } catch (Exception e) {
+            System.err.println("Socket.io server failed to start: " + e.getMessage());
+            // Do not fail application startup due to socket server
+        }
     }
 
     @PreDestroy

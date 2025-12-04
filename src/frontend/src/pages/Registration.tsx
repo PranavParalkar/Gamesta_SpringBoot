@@ -98,6 +98,22 @@ export default function RegistrationPage() {
   };
 
   const submitRegistration = async () => {
+    // Require sign-in before proceeding
+    const token = typeof window !== "undefined" ? sessionStorage.getItem("gamesta_token") : null;
+    if (!token) {
+      setSuccess({ id: Date.now(), msg: "Please sign in before registering" });
+      setTimeout(() => setSuccess(null), 3000);
+      // Optionally navigate to login page if present
+      try {
+        if (typeof window !== "undefined") {
+          const hasLogin = !!document.querySelector('a[href="/login"], a[href="/signin"], a[href*="login"], a[href*="signin"]');
+          if (hasLogin) {
+            window.location.href = "/login";
+          }
+        }
+      } catch {}
+      return;
+    }
     if (!prn.trim() || selectedEvents.length === 0) {
       setSuccess({ id: Date.now(), msg: "Provide PRN and select ≥1 event" });
       setTimeout(() => setSuccess(null), 2500);
@@ -113,7 +129,7 @@ export default function RegistrationPage() {
       // create order on server
       const createRes = await fetch(`/api/payment/create-order`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ total: totalPrice }),
       });
       if (!createRes.ok) {
@@ -143,7 +159,7 @@ export default function RegistrationPage() {
           try {
             const v = await fetch(`/api/payment/verify`, {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
               body: JSON.stringify(response),
             });
             const verified = await v.json().catch(() => ({}));
@@ -152,12 +168,11 @@ export default function RegistrationPage() {
             } else {
               // Persist event registrations
               try {
-                const token = typeof window !== 'undefined' ? sessionStorage.getItem('gamesta_token') : null;
                 const regRes = await fetch('/api/profile/events/register', {
                   method: 'POST',
                   headers: {
                     'Content-Type': 'application/json',
-                    ...(token ? { Authorization: `Bearer ${token}` } : {})
+                    Authorization: `Bearer ${token}`
                   },
                   body: JSON.stringify({
                     events: selectedEvents,
@@ -443,23 +458,8 @@ export default function RegistrationPage() {
                 <h2 className="text-xl font-bold mb-3 bg-clip-text text-transparent bg-gradient-to-r from-pink-500 to-cyan-400">Checkout</h2>
 
                 <div className="mb-4">
-                  <label className="text-xs text-gray-300 flex items-center gap-2">
-                    Name
-                    {loadingUserData && (
-                      <motion.div
-                        animate={{ rotate: 360 }}
-                        transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                        className="w-3 h-3 border-2 border-purple-500 border-t-transparent rounded-full"
-                      />
-                    )}
-                  </label>
-                  <motion.input
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    whileFocus={{ scale: 1.02, borderColor: "#a855f7" }}
-                    className="w-full mt-2 px-3 py-2 rounded-lg bg-[#07060a]/60 border border-[#241f28] focus:outline-none focus:ring-2 focus:ring-purple-500/50 text-gray-200 transition-all"
-                    placeholder="Enter Name"
-                  />
+                  <label className="text-xs text-gray-300">PRN</label>
+                  <input value={prn} onChange={(e) => setPrn(e.target.value)} className="w-full mt-2 px-3 py-2 rounded-lg bg-[#07060a]/60 border border-[#241f28] focus:outline-none" placeholder="Enter your 12-digit PRN" />
                 </div>
 
                 <div className="mb-4">
@@ -484,8 +484,23 @@ export default function RegistrationPage() {
                 </div>
 
                 <div className="mb-4">
-                  <label className="text-xs text-gray-300">PRN</label>
-                  <input value={prn} onChange={(e) => setPrn(e.target.value)} className="w-full mt-2 px-3 py-2 rounded-lg bg-[#07060a]/60 border border-[#241f28] focus:outline-none" placeholder="Enter your 12-digit PRN" />
+                  <label className="text-xs text-gray-300 flex items-center gap-2">
+                    Name
+                    {loadingUserData && (
+                      <motion.div
+                        animate={{ rotate: 360 }}
+                        transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                        className="w-3 h-3 border-2 border-purple-500 border-t-transparent rounded-full"
+                      />
+                    )}
+                  </label>
+                  <motion.input
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    whileFocus={{ scale: 1.02, borderColor: "#a855f7" }}
+                    className="w-full mt-2 px-3 py-2 rounded-lg bg-[#07060a]/60 border border-[#241f28] focus:outline-none focus:ring-2 focus:ring-purple-500/50 text-gray-200 transition-all"
+                    placeholder="Enter Name"
+                  />
                 </div>
 
                 <div className="mb-4">
