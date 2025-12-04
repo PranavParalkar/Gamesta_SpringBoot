@@ -2,6 +2,7 @@ package com.project.gamesta.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
+import com.project.gamesta.model.Role;
 import java.time.Instant;
 
 @Entity
@@ -24,6 +25,10 @@ public class User {
     @Column(nullable = false)
     private Instant createdAt = Instant.now();
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private Role role = Role.USER;
+
     public User() {}
 
     public User(String email, String name, String passwordHash) {
@@ -42,4 +47,6 @@ public class User {
     public void setPasswordHash(String passwordHash) { this.passwordHash = passwordHash; }
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
+    public Role getRole() { return role; }
+    public void setRole(Role role) { this.role = role; }
 }

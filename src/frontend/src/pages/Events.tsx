@@ -1,27 +1,23 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import PrismaticBurst from "../components/ui/PrismaticBurst";
-
-const timelineData = [
-  "BGMI Tournament",
-  "Chess Tournament",
-  "Debate Contest",
-  "Drone Race Competition",
-  "VR Experience",
-  "Photography Scavenger Hunt",
-  "Dance Face-off",
-  "Flying Simulator",
-  "Ramp Walk",
-  "GSQ (Google Squid Games)",
-  "Drone Simulator Competition",
-  "AeroCAD Face-Off",
-  "Poster Design Competition",
-  "Mobile Robocar Racing",
-  "Strongest on Campus",
-  "Valorant Tournament",
-];
+type EventItem = { id: number; name: string; price: number; ticketLimit?: number | null; ticketsSold?: number; remaining?: number | null };
 
 export default function EventsPage() {
+  const [timelineData, setTimelineData] = useState<EventItem[]>([]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/events');
+        const json = await res.json().catch(() => ({}));
+        if (res.ok && json?.data) setTimelineData(json.data);
+      } catch {}
+    })();
+  }, []);
+  
+  // Admin actions are handled in /admin dashboard
+
   return (
     <div className="min-h-screen w-full text-white relative overflow-hidden">
       {/* 🌈 Energy Overlay */}
@@ -72,7 +68,9 @@ export default function EventsPage() {
                         : "md:ml-auto md:translate-x-[8%]"
                     }`}
                 >
-                  {event}
+                  <div className="text-lg font-semibold flex items-center justify-between">
+                    <span>{event.name}</span>
+                  </div>
                 </div>
               </motion.li>
             );

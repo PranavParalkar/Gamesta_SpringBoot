@@ -1,5 +1,6 @@
 import { useState } from "react";
 import useSWR from "swr";
+import { useSWRConfig } from "swr";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import PrismaticBurst from "../components/ui/PrismaticBurst";
@@ -26,6 +27,7 @@ export default function SubmitPage() {
   const [error, setError] = useState(null);
   const navigate = useNavigate();
   const { data: statsData } = useSWR("/api/stats", fetcher);
+  const { mutate: globalMutate } = useSWRConfig();
 
   async function submit(e) {
     e.preventDefault();
@@ -66,6 +68,20 @@ export default function SubmitPage() {
       const body = await res.json().catch(() => ({}));
       if (res.ok) {
         toast.success("Idea submitted 🎉");
+        const newIdea = body?.data || null;
+        // Optimistically prepend new idea to ideas list
+        if (newIdea) {
+          globalMutate("/api/ideas", (current: any) => {
+            if (!current?.data) return current;
+            if (current.data.some((i: any) => i.id === newIdea.id)) return current;
+            return { ...current, data: [newIdea, ...current.data] };
+          }, { revalidate: false });
+          // Optionally revalidate in background to confirm server state
+          globalMutate("/api/ideas");
+        } else {
+          // Fallback: trigger revalidation
+          globalMutate("/api/ideas");
+        }
         navigate("/ideas");
       } else {
         setError(body.error || "Failed to submit");

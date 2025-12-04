@@ -3,27 +3,12 @@ import { motion, AnimatePresence } from "framer-motion";
 import PrismaticBurst from "../components/ui/PrismaticBurst";
 import { FaCheckCircle, FaStar, FaTrophy, FaRocket } from "react-icons/fa";
 
-const eventsWithPrice = [
-  { name: "BGMI Tournament", price: 200 },
-  { name: "Chess Tournament", price: 150 },
-  { name: "Debate Contest", price: 100 },
-  { name: "Drone Race Competition", price: 300 },
-  { name: "VR Experience", price: 250 },
-  { name: "Photography Scavenger Hunt", price: 120 },
-  { name: "Dance Face-off", price: 180 },
-  { name: "Flying Simulator", price: 350 },
-  { name: "Ramp Walk", price: 100 },
-  { name: "GSQ (Google Squid Games)", price: 280 },
-  { name: "Drone Simulator Competition", price: 320 },
-  { name: "AeroCAD Face-Off", price: 200 },
-  { name: "Poster Design Competition", price: 80 },
-  { name: "Mobile Robocar Racing", price: 400 },
-  { name: "Strongest on Campus", price: 150 },
-  { name: "Valorant Tournament", price: 220 },
-];
+type EventItem = { id: number; name: string; price: number; ticketLimit?: number | null; ticketsSold?: number; remaining?: number | null };
 
 export default function RegistrationPage() {
   const [selectedEvents, setSelectedEvents] = useState<string[]>([]);
+  const [finalEventCount, setFinalEventCount] = useState<number>(0);
+  const [events, setEvents] = useState<EventItem[]>([]);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [prn, setPrn] = useState("");
@@ -32,13 +17,25 @@ export default function RegistrationPage() {
   );
   const [showCelebration, setShowCelebration] = useState(false);
   const [loadingUserData, setLoadingUserData] = useState(false);
+  // Admin dashboard is separate; keep user flow simple here
 
   const toggleEvent = (name: string) =>
     setSelectedEvents((prev) => (prev.includes(name) ? prev.filter((p) => p !== name) : [...prev, name]));
 
-  const totalPrice = eventsWithPrice
+  const totalPrice = events
     .filter((e) => selectedEvents.includes(e.name))
-    .reduce((s, e) => s + e.price, 0);
+    .reduce((s, e) => s + (e.price || 0), 0);
+
+  // Load events from backend
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/events');
+        const json = await res.json().catch(() => ({}));
+        if (res.ok && json?.data) setEvents(json.data);
+      } catch {}
+    })();
+  }, []);
 
   // Fetch user data from profile API on component mount
   useEffect(() => {
@@ -57,6 +54,7 @@ export default function RegistrationPage() {
           // Only populate if fields are empty (allow user to edit)
           if (userData.name && !name) setName(userData.name);
           if (userData.email && !email) setEmail(userData.email);
+          // role info not used on this page now
         }
       } catch (e) {
         // ignore errors
@@ -65,6 +63,8 @@ export default function RegistrationPage() {
       }
     })();
   }, []); // Only run once on mount
+
+  // Admin lists/actions live in /admin
 
   // Auto-lookup name/email from backend when PRN is provided (fallback)
   useEffect(() => {
@@ -182,11 +182,13 @@ export default function RegistrationPage() {
                 });
                 const regJson = await regRes.json().catch(() => ({}));
                 if (regRes.ok) {
+                  const countToShow = Number(regJson.count ?? selectedEvents.length) || 0;
+                  setFinalEventCount(countToShow);
                   // Trigger celebration animation
                   setShowCelebration(true);
                   setTimeout(() => setShowCelebration(false), 3000);
                   
-                  setSuccess({ id: Date.now(), msg: `Payment + ${regJson.count || selectedEvents.length} event(s) saved!` });
+                  setSuccess({ id: Date.now(), msg: `Payment + ${countToShow} event(s) saved!` });
                   
                   // clear form after a delay
                   setTimeout(() => {
@@ -297,7 +299,7 @@ export default function RegistrationPage() {
                 transition={{ delay: 0.5 }}
                 className="text-2xl md:text-3xl text-purple-100 mb-2"
               >
-                You're all set for {selectedEvents.length} {selectedEvents.length === 1 ? 'event' : 'events'}!
+                You're all set for {finalEventCount} {finalEventCount === 1 ? 'event' : 'events'}!
               </motion.p>
               
               <motion.p
@@ -404,7 +406,7 @@ export default function RegistrationPage() {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-              {eventsWithPrice.map((ev, i) => {
+              {events.map((ev, i) => {
                 const active = selectedEvents.includes(ev.name);
                 return (
                   <motion.div
@@ -423,7 +425,7 @@ export default function RegistrationPage() {
                     <div className="flex items-start justify-between">
                       <div className="space-y-1">
                         <h3 className="text-base md:text-lg font-semibold">{ev.name}</h3>
-                        <p className="text-xs text-gray-300">Slots: <span className="font-medium text-gray-100">Limited</span></p>
+                        <p className="text-xs text-gray-300">Slots: <span className="font-medium text-gray-100">{ev.ticketLimit != null ? `${ev.ticketsSold ?? 0}/${ev.ticketLimit}` : 'Unlimited'}</span></p>
                       </div>
 
                       <div className="text-right">
@@ -514,7 +516,7 @@ export default function RegistrationPage() {
                       <div className="text-xs text-gray-500">No events selected</div>
                     ) : (
                       selectedEvents.map((s, idx) => {
-                        const ev = eventsWithPrice.find((e) => e.name === s);
+                        const ev = events.find((e) => e.name === s);
                         return (
                           <div key={idx} className="flex items-center justify-between text-sm bg-[#0b0a0d]/40 px-3 py-2 rounded-md border border-purple-500/10">
                             <div className="truncate">{s}</div>
@@ -543,10 +545,11 @@ export default function RegistrationPage() {
 
               {/* mini legal / note */}
               <div className="mt-4 text-xs text-gray-400">
-                <div>Note: Prices are hard-coded demo values. This page collects basic details for demo registration only.</div>
+                <div>Note: Event details are fetched live from the server.</div>
               </div>
             </motion.div>
           </aside>
+          
         </div>
       </main>
 

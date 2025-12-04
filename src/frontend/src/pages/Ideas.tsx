@@ -162,8 +162,22 @@ async function toggleVote(id) {
 
     socket.on("vote_update", handleVoteUpdate);
 
+    const handleIdeaCreated = (idea: any) => {
+      mutate(
+        (current) => {
+          if (!current?.data) return current;
+          // avoid duplicate
+          if (current.data.some((i) => i.id === idea.id)) return current;
+          return { ...current, data: [idea, ...current.data] };
+        },
+        { revalidate: false }
+      );
+    };
+    socket.on("idea_created", handleIdeaCreated);
+
     return () => {
       socket.off("vote_update", handleVoteUpdate);
+      socket.off("idea_created", handleIdeaCreated);
     };
   }, [socket, mutate]);
 
@@ -172,6 +186,8 @@ async function toggleVote(id) {
     setSelectedIdeaTitle(ideaTitle);
     setCommentsSidebarOpen(true);
   };
+
+  
 
   const closeCommentsSidebar = () => {
     setCommentsSidebarOpen(false);
@@ -324,17 +340,17 @@ async function toggleVote(id) {
                     <Button className="mt-4">Submit Idea</Button>
                   </div>
                 ) : (
-                  <div className="columns-1 sm:columns-2 gap-6 space-y-6 lg:columns-3">
+                  <div className="columns-1 sm:columns-2 lg:columns-3 [column-gap:1.5rem]">
                     {sortedIdeas.map((idea, index) => (
                       <motion.div
                         key={idea.id}
                         ref={(el) => { ideaRefs.current[idea.id] = el; }}
                         initial={{ opacity: 0, y: 50 }}
-                        whileInView={{ opacity: 1, y: 0 }}
+                        animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.4, delay: index * 0.02 }}
-                        viewport={{ once: true }}
+                        className="break-inside-avoid-column inline-block w-full mb-6"
                       >
-                        <Card id={`idea-${idea.id}`} className="relative mb-6 break-inside-avoid bg-white/10 border border-white/10 rounded-2xl backdrop-blur-xl hover:shadow-2xl hover:shadow-purple-500/20 transition-transform hover:scale-[1.02]">
+                        <Card id={`idea-${idea.id}`} className="relative bg-white/10 border border-white/10 rounded-2xl backdrop-blur-xl hover:shadow-2xl hover:shadow-purple-500/20 transition-transform hover:scale-[1.02]">
                           <CardHeader>
                             <CardTitle className="text-xl text-white mb-2">
                               {idea.title}

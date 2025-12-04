@@ -6,6 +6,7 @@ import com.project.gamesta.repository.AuthTokenRepository;
 import com.project.gamesta.repository.EventRegistrationRepository;
 import org.springframework.http.ResponseEntity;
 import com.project.gamesta.service.EmailService;
+import com.project.gamesta.repository.EventCatalogRepository;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.*;
@@ -15,30 +16,16 @@ import java.util.*;
 public class EventRegistrationController {
     private final AuthTokenRepository tokenRepository;
     private final EventRegistrationRepository eventRepo;
+    private final EventCatalogRepository eventCatalogRepo;
     private final EmailService emailService;
 
-    private static final Map<String, Integer> PRICE_MAP = Map.ofEntries(
-            Map.entry("BGMI Tournament", 200),
-            Map.entry("Chess Tournament", 150),
-            Map.entry("Debate Contest", 100),
-            Map.entry("Drone Race Competition", 300),
-            Map.entry("VR Experience", 250),
-            Map.entry("Photography Scavenger Hunt", 120),
-            Map.entry("Dance Face-off", 180),
-            Map.entry("Flying Simulator", 350),
-            Map.entry("Ramp Walk", 100),
-            Map.entry("GSQ (Google Squid Games)", 280),
-            Map.entry("Drone Simulator Competition", 320),
-            Map.entry("AeroCAD Face-Off", 200),
-            Map.entry("Poster Design Competition", 80),
-            Map.entry("Mobile Robocar Racing", 400),
-            Map.entry("Strongest on Campus", 150),
-            Map.entry("Valorant Tournament", 220)
-    );
-
-    public EventRegistrationController(AuthTokenRepository tokenRepository, EventRegistrationRepository eventRepo, EmailService emailService) {
+    public EventRegistrationController(AuthTokenRepository tokenRepository,
+                                       EventRegistrationRepository eventRepo,
+                                       EventCatalogRepository eventCatalogRepo,
+                                       EmailService emailService) {
         this.tokenRepository = tokenRepository;
         this.eventRepo = eventRepo;
+        this.eventCatalogRepo = eventCatalogRepo;
         this.emailService = emailService;
     }
 
@@ -97,7 +84,7 @@ public class EventRegistrationController {
         for (Object o : list) {
             if (o == null) continue;
             String name = o.toString();
-            Integer price = PRICE_MAP.getOrDefault(name, null);
+            Integer price = eventCatalogRepo.findByName(name).map(e -> e.getPrice()).orElse(null);
             saved.add(eventRepo.save(new EventRegistration(user, name, price, paymentId, orderId)));
         }
         try {

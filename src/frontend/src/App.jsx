@@ -10,6 +10,7 @@ import Submit from "./pages/submit";
 import Header from "./components/Header";
 import { Toaster } from "react-hot-toast";
 import Registration from "./pages/Registration";
+import Admin from "./pages/Admin";
 
 function App() {
   return (
@@ -25,6 +26,7 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/submit" element={<Submit />} />
           <Route path="/registration" element={<Registration />} />
+          <Route path="/admin" element={<Admin />} />
         </Routes>
         <Toaster position="top-right" />
       </div>

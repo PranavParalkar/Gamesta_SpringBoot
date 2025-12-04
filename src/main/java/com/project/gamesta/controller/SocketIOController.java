@@ -6,8 +6,8 @@ import com.corundumstudio.socketio.annotation.OnConnect;
 import com.corundumstudio.socketio.annotation.OnDisconnect;
 import com.corundumstudio.socketio.annotation.OnEvent;
 import com.project.gamesta.model.Comment;
-import com.project.gamesta.model.User;
 import com.project.gamesta.repository.AuthTokenRepository;
+import com.project.gamesta.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -23,7 +23,11 @@ public class SocketIOController {
     @Autowired
     private AuthTokenRepository tokenRepository;
 
-    private final Map<String, User> connectedUsers = new HashMap<>();
+    @Autowired
+    private UserRepository userRepository;
+
+    // Track connected user IDs to avoid holding lazy proxies outside a session
+    private final Map<String, Long> connectedUserIds = new HashMap<>();
 
     @OnConnect
     public void onConnect(SocketIOClient client) {
@@ -39,8 +43,16 @@ public class SocketIOController {
         
         if (token != null && !token.isEmpty()) {
             tokenRepository.findByToken(token).ifPresent(authToken -> {
-                connectedUsers.put(client.getSessionId().toString(), authToken.getUser());
-                System.out.println("User connected: " + authToken.getUser().getName());
+                Long userId = authToken.getUser() != null ? authToken.getUser().getId() : null;
+                if (userId != null) {
+                    connectedUserIds.put(client.getSessionId().toString(), userId);
+                    // Fetch a fully initialized user within repository call to avoid LazyInitializationException
+                    userRepository.findById(userId).ifPresent(u -> {
+                        System.out.println("User connected: " + (u.getName() != null ? u.getName() : ("id=" + u.getId())));
+                    });
+                } else {
+                    System.out.println("User connected with token but no user bound: " + client.getSessionId());
+                }
             });
         } else {
             System.out.println("Client connected without token: " + client.getSessionId());
@@ -49,7 +61,7 @@ public class SocketIOController {
 
     @OnDisconnect
     public void onDisconnect(SocketIOClient client) {
-        connectedUsers.remove(client.getSessionId().toString());
+        connectedUserIds.remove(client.getSessionId().toString());
     }
 
     @OnEvent("join_idea")
@@ -82,6 +94,11 @@ public class SocketIOController {
         data.put("upvote_count", upvoteCount);
         
         socketIOServer.getRoomOperations("idea_" + ideaId).sendEvent("vote_update", data);
+    }
+
+    // Emit idea_created to all connected clients
+    public void emitIdeaCreated(Map<String, Object> ideaPayload) {
+        socketIOServer.getBroadcastOperations().sendEvent("idea_created", ideaPayload);
     }
 }
 

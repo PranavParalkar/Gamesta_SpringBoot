@@ -46,6 +46,18 @@ public class IdeaController {
         String title = (String) body.get("title");
         String description = (String) body.get("description");
         Idea i = ideaService.createIdea(title, description, user);
+        // Emit real-time idea_created broadcast with minimal payload
+        if (socketIOController != null) {
+            Map<String, Object> payload = Map.of(
+                    "id", i.getId(),
+                    "title", i.getTitle(),
+                    "description", i.getDescription(),
+                    "score", i.getScore(),
+                    "upvoteCount", i.getUpvoteCount(),
+                    "author_name", user.getName()
+            );
+            socketIOController.emitIdeaCreated(payload);
+        }
         return ResponseEntity.ok(Map.of("data", i));
     }
 
@@ -70,7 +82,10 @@ public class IdeaController {
         var opt = ideaService.findById(id);
         if (opt.isEmpty()) return ResponseEntity.status(404).body(Map.of("error","not found"));
         Idea idea = opt.get();
-        if (!idea.getAuthor().getId().equals(user.getId())) return ResponseEntity.status(403).body(Map.of("error","forbidden"));
+        boolean isAdmin = user.getRole() != null && (user.getRole().name().equals("ADMIN") || user.getRole().name().equals("SUPER_ADMIN"));
+        if (!isAdmin && (idea.getAuthor() == null || !idea.getAuthor().getId().equals(user.getId()))) {
+            return ResponseEntity.status(403).body(Map.of("error","forbidden"));
+        }
         ideaService.delete(idea);
         return ResponseEntity.ok(Map.of("data","deleted"));
     }

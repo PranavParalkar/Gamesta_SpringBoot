@@ -28,7 +28,16 @@ public class ProfileController {
     public ResponseEntity<?> profile(@RequestHeader(value = "Authorization", required = false) String auth) {
         var user = resolveUser(auth);
         if (user == null) return ResponseEntity.status(401).body(Map.of("error","unauthorized"));
-        return ResponseEntity.ok(Map.of("user", Map.of("id", user.getId(), "name", user.getName(), "email", user.getEmail())));
+        boolean isAdmin = user.getRole() != null && (user.getRole().name().equals("ADMIN") || user.getRole().name().equals("SUPER_ADMIN"));
+        return ResponseEntity.ok(Map.of(
+                "user", Map.of(
+                        "id", user.getId(),
+                        "name", user.getName(),
+                        "email", user.getEmail(),
+                        "role", user.getRole() == null ? "USER" : user.getRole().name(),
+                        "isAdmin", isAdmin
+                )
+        ));
     }
 
     @GetMapping("/ideas")

@@ -14,10 +14,21 @@ export default function Header() {
   const [token, setToken] = useState(() => getToken());
   const [menuOpen, setMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   // Keep token in sync when navigation changes (e.g., after login)
   useEffect(() => {
     setToken(getToken());
+    // refresh admin flag on nav change
+    (async () => {
+      const t = getToken();
+      if (!t) { setIsAdmin(false); return; }
+      try {
+        const res = await fetch('/api/profile', { headers: { Authorization: `Bearer ${t}` } });
+        const j = await res.json().catch(()=>({}));
+        setIsAdmin(Boolean(j?.user?.isAdmin));
+      } catch { setIsAdmin(false); }
+    })();
   }, [pathname]);
 
   function signOut() {
@@ -93,6 +104,15 @@ export default function Header() {
                     transition={{ duration: 0.2 }}
                     className="absolute right-0 mt-3 w-40 bg-black/80 text-white border border-white/10 rounded-lg p-2 shadow-lg"
                   >
+                    {isAdmin && (
+                      <Link
+                        to="/admin"
+                        className="block px-3 py-2 text-sm hover:bg-white/10 rounded"
+                        onClick={() => setUserMenuOpen(false)}
+                      >
+                        Admin Dashboard
+                      </Link>
+                    )}
                     <Link
                       to="/profile"
                       className="block px-3 py-2 text-sm hover:bg-white/10 rounded"

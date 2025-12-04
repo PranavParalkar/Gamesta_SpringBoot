@@ -22,18 +22,22 @@ export function useSocket(token: string | null) {
     let createdSocket: Socket | null = null;
 
     (async () => {
-      const urlsToTry = [DEFAULT_SOCKET_URL, window.location.origin].filter(Boolean);
+      // Prefer explicit env URL; do not fallback to Vite dev origin which has no socket server
+      const urlsToTry = [DEFAULT_SOCKET_URL].filter(Boolean);
 
       for (const url of urlsToTry) {
         if (!mounted) return;
         try {
           // create socket with a small connect timeout & fallback transports
           // Note: netty-socketio expects token as query parameter, not in auth object
+          console.log("Connecting socket to:", url);
           createdSocket = io(url, {
             transports: ["websocket", "polling"],
-            query: { token },
+            // Provide token if available; otherwise connect anonymously
+            query: token ? { token } : undefined,
             timeout: CONNECT_TIMEOUT_MS,
-            // path: '/socket.io' // adjust if server uses custom path
+            // Netty-socketio default path is '/socket.io'
+            path: '/socket.io'
           });
 
           // wait briefly for connect_error or connect event via a promise
@@ -78,7 +82,7 @@ export function useSocket(token: string | null) {
       }
 
       if (!mounted || !createdSocket) {
-        console.warn("Could not establish socket connection to any candidate URL.");
+        console.warn("Could not establish socket connection. Ensure VITE_SOCKET_URL points to your Socket.IO server (e.g., http://localhost:9092) and that you're signed in.");
         return;
       }
 
