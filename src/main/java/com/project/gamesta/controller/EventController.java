@@ -31,14 +31,14 @@ public class EventController {
             long sold = registrationRepository.countByEventName(e.getName());
             Integer limit = e.getTicketLimit();
             Long remaining = (limit == null) ? null : Math.max(0, (long)limit - sold);
-            return Map.of(
-                    "id", e.getId(),
-                    "name", e.getName(),
-                    "price", e.getPrice(),
-                    "ticketLimit", e.getTicketLimit(),
-                    "ticketsSold", sold,
-                    "remaining", remaining
-            );
+            java.util.Map<String, Object> map = new java.util.HashMap<>();
+            map.put("id", e.getId());
+            map.put("name", e.getName());
+            map.put("price", e.getPrice());
+            map.put("ticketLimit", e.getTicketLimit());
+            map.put("ticketsSold", sold);
+            map.put("remaining", remaining);
+            return map;
         }).toList();
         return ResponseEntity.ok(Map.of("data", data));
     }

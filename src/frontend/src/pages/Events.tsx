@@ -30,13 +30,8 @@ export default function EventsPage() {
         />
       </div>
 
-      <main className="max-w-5xl mt-24 mx-auto px-6 relative">
-        {/* Page Heading */}
-        <div className="relative z-10 text-center mb-8">
-          <h1 className="text-4xl md:text-5xl font-extrabold bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-400 bg-clip-text text-transparent drop-shadow-lg">
-            Events in Gamesta
-          </h1>
-        </div>
+      <main className="max-w-5xl mt-10 mx-auto px-6 relative">
+    
 
         {/* Timeline Items */}
         <ul className="relative z-10 space-y-5 md:space-y-0 mt-10">

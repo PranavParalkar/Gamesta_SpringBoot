@@ -134,3 +134,4 @@ Open browser: `http://localhost:8080/api/ideas/2/comments`
 3. Check Java version (needs Java 17+)
 4. Review `TROUBLESHOOTING.md` for more details
 
+

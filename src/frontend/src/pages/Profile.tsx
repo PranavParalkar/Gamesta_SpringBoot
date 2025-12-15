@@ -154,13 +154,13 @@ export default function ProfilePage() {
         />
       </div>
 
-      <main className="container mx-auto px-4 py-32 relative z-10">
+      <main className="container mx-auto px-4 py-10 relative z-10">
         {/* Greeting */}
         <motion.div
           initial={{ opacity: 0, y: 50 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8 }}
-          className="text-center mb-16"
+          className="text-center mb-6"
         >
           <h1 className="text-5xl sm:text-6xl font-extrabold bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-400 bg-clip-text text-transparent drop-shadow-lg">
             {loading ? "Hello 👋" : userName ? `Hello ${userName} 👋` : "Hello 👋"}
@@ -169,12 +169,12 @@ export default function ProfilePage() {
             Welcome to your creative universe — where your ideas glow with innovation.
           </p>
 
-          <div className="mt-8 w-40 mx-auto h-1 bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-400 rounded-full shadow-[0_0_20px_#7a5cff]" />
+          <div className="mt-4 w-40 mx-auto h-1 bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-400 rounded-full shadow-[0_0_20px_#7a5cff]" />
         </motion.div>
 
         {/* Improved Sections */}
         <motion.div
-          className="max-w-5xl mx-auto"
+          className="max-w-7xl mx-auto"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.6, duration: 0.8 }}

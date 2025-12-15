@@ -6,4 +6,5 @@ import java.util.Optional;
 
 public interface AuthTokenRepository extends JpaRepository<AuthToken, Long> {
     Optional<AuthToken> findByToken(String token);
+    java.util.List<AuthToken> findByUser(com.project.gamesta.model.User user);
 }

@@ -11,6 +11,7 @@ import Header from "./components/Header";
 import { Toaster } from "react-hot-toast";
 import Registration from "./pages/Registration";
 import Admin from "./pages/Admin";
+import Trending from "./pages/Trending";
 
 function App() {
   return (
@@ -27,6 +28,7 @@ function App() {
           <Route path="/submit" element={<Submit />} />
           <Route path="/registration" element={<Registration />} />
           <Route path="/admin" element={<Admin />} />
+          <Route path="/trending" element={<Trending />} />
         </Routes>
         <Toaster position="top-right" />
       </div>

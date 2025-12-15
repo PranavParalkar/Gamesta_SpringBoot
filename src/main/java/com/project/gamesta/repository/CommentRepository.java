@@ -10,6 +10,8 @@ import java.util.List;
 @Repository
 public interface CommentRepository extends JpaRepository<Comment, Long> {
     List<Comment> findByIdeaOrderByCreatedAtAsc(Idea idea);
+    List<Comment> findByAuthor(com.project.gamesta.model.User author);
     long countByIdea(Idea idea);
 }
+
 

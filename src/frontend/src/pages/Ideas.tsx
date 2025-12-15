@@ -17,6 +17,7 @@ import { useSocket } from "../hooks/useSocket";
 import CommentsSidebar from "../components/CommentsSidebar";
 import { Socket } from "socket.io-client";
 import { FaComment } from "react-icons/fa";
+import ReactionDock from "../components/ReactionDock";
 
 // -----------------------------
 // Fetcher (same as original)
@@ -45,12 +46,17 @@ export default function IdeasPageWithTimeline() {
   const [commentsSidebarOpen, setCommentsSidebarOpen] = useState(false);
   const [selectedIdeaId, setSelectedIdeaId] = useState<number | null>(null);
   const [selectedIdeaTitle, setSelectedIdeaTitle] = useState<string | null>(null);
+  const [hoveredIdeaId, setHoveredIdeaId] = useState<number | null>(null);
+  
+  // Separate states for votes and reactions
+  const [userReactions, setUserReactions] = useState<Record<number, string>>({});
+  const [votedIds, setVotedIds] = useState(new Set());
+  
+  // Reaction counts cache
+  const [reactionCounts, setReactionCounts] = useState<Record<number, Record<string, number>>>({});
 
   // refs for scrolling to idea cards
   const ideaRefs = useRef({});
-
-  // track which idea ids the current user has voted for (client-side set)
-  const [votedIds, setVotedIds] = useState(new Set());
 
   // Socket.io connection
   const token =
@@ -59,84 +65,164 @@ export default function IdeasPageWithTimeline() {
       : null;
   const socket = useSocket(token);
 
-async function toggleVote(id) {
-  const token = typeof window !== "undefined"
-    ? sessionStorage.getItem("gamesta_token")
-    : null;
+  async function toggleVote(id) {
+    const token = typeof window !== "undefined"
+      ? sessionStorage.getItem("gamesta_token")
+      : null;
 
-  if (!token) {
-    toast.error("Please sign in to vote");
-    return;
-  }
-
-  // ✅ determine future state BEFORE async
-  const alreadyVoted = votedIds.has(id);
-
-  // ✅ immediately update UI — no flicker
-  setVotedIds((prev) => {
-    const next = new Set(prev);
-    alreadyVoted ? next.delete(id) : next.add(id);
-    return next;
-  });
-
-  setAnimating((s) => ({ ...s, [id]: true }));
-
-  try {
-    const res = await fetch(`/api/ideas/${id}/vote`, {
-      method: "POST",
-      body: JSON.stringify({ ideaId: id, vote: 1 }),
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-    });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(json.error || "Vote failed");
-    toast.success(alreadyVoted ? "Vote removed ❌" : "Voted ✅");
-
-    // 🔄 Update score locally without full list refetch
-    if (json?.stats) {
-      mutate(
-        (current) => {
-          if (!current?.data) return current;
-          return {
-            ...current,
-            data: current.data.map((idea) =>
-              idea.id === id
-                ? { ...idea, score: json.stats.score }
-                : idea
-            ),
-          };
-        },
-        { revalidate: false }
-      );
+    if (!token) {
+      toast.error("Please sign in to vote");
+      return;
     }
-  } catch (e) {
-    toast.error("Could not update vote.");
-    // ❗ rollback optimistic update on failure
+
+    const alreadyVoted = votedIds.has(id);
+
     setVotedIds((prev) => {
       const next = new Set(prev);
-      alreadyVoted ? next.add(id) : next.delete(id);
+      alreadyVoted ? next.delete(id) : next.add(id);
       return next;
     });
-  } finally {
-    setAnimating((s) => ({ ...s, [id]: false }));
+
+    setAnimating((s) => ({ ...s, [id]: true }));
+
+    try {
+      const res = await fetch(`/api/ideas/${id}/vote`, {
+        method: "POST",
+        body: JSON.stringify({ ideaId: id, vote: 1 }),
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || "Vote failed");
+      toast.success(alreadyVoted ? "Vote removed ❌" : "Voted ✅");
+
+      if (json?.stats) {
+        mutate(
+          (current) => {
+            if (!current?.data) return current;
+            return {
+              ...current,
+              data: current.data.map((idea) =>
+                idea.id === id
+                  ? { ...idea, score: json.stats.score }
+                  : idea
+              ),
+            };
+          },
+          { revalidate: false }
+        );
+      }
+    } catch (e) {
+      toast.error("Could not update vote.");
+      setVotedIds((prev) => {
+        const next = new Set(prev);
+        alreadyVoted ? next.add(id) : next.delete(id);
+        return next;
+      });
+    } finally {
+      setAnimating((s) => ({ ...s, [id]: false }));
+    }
   }
-}
 
+  async function handleReaction(id: number, type: string) {
+    const token = typeof window !== "undefined"
+      ? sessionStorage.getItem("gamesta_token")
+      : null;
 
+    if (!token) {
+      toast.error("Please sign in to react");
+      return;
+    }
 
-  // initialize votedIds if server provides user-vote flags on ideas
+    const currentReaction = userReactions[id];
+    const isRemoving = currentReaction === type;
+
+    // Optimistic update
+    setUserReactions((prev) => {
+      const next = { ...prev };
+      if (isRemoving) delete next[id];
+      else next[id] = type;
+      return next;
+    });
+    
+    // Optimistic count update
+    setReactionCounts((prev) => {
+        const ideaCounts = { ...(prev[id] || {}) };
+        if (isRemoving) {
+            ideaCounts[type] = Math.max(0, (ideaCounts[type] || 1) - 1);
+        } else {
+            if (currentReaction) {
+                ideaCounts[currentReaction] = Math.max(0, (ideaCounts[currentReaction] || 1) - 1);
+            }
+            ideaCounts[type] = (ideaCounts[type] || 0) + 1;
+        }
+        return { ...prev, [id]: ideaCounts };
+    });
+
+    setAnimating((s) => ({ ...s, [id]: true }));
+
+    try {
+      const res = await fetch(`/api/ideas/${id}/react`, {
+        method: "POST",
+        body: JSON.stringify({ reaction: type }),
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || "Reaction failed");
+      
+      if (json.removed) {
+          toast.success("Reaction removed");
+      } else {
+          toast.success(`Reacted with ${type} `);
+      }
+      
+      // Update counts from server
+      if (json.reaction_counts) {
+          setReactionCounts(prev => ({ ...prev, [id]: json.reaction_counts }));
+      }
+
+    } catch (e) {
+      toast.error("Could not update reaction");
+      // Rollback
+      setUserReactions((prev) => {
+        const next = { ...prev };
+        if (currentReaction) next[id] = currentReaction;
+        else delete next[id];
+        return next;
+      });
+      // Rollback counts (simplified, just refetch or ignore for now)
+    } finally {
+      setAnimating((s) => ({ ...s, [id]: false }));
+      setHoveredIdeaId(null);
+    }
+  }
+
+  // initialize votedIds and reactions from server data
   useEffect(() => {
     if (!ideasData?.data) return;
     const s = new Set();
-    ideasData.data.forEach((it) => {
-      // Support multiple possible API flags; primary is voted_by_you (0/1)
-      if (it.voted_by_you || it.userVoted || it.voted_by_user || it.myVote || it.voted) {
+    const reactions: Record<number, string> = {};
+    const counts: Record<number, Record<string, number>> = {};
+    
+    ideasData.data.forEach((it: any) => {
+      if (it.voted_by_you || it.userVoted || it.voted) {
         s.add(it.id);
+      }
+      if (it.user_reaction) {
+          reactions[it.id] = it.user_reaction;
+      }
+      if (it.reaction_counts) {
+          counts[it.id] = it.reaction_counts;
       }
     });
     setVotedIds(s);
+    setUserReactions(reactions);
+    setReactionCounts(counts);
   }, [ideasData]);
 
   // Listen for real-time vote updates via Socket.io
@@ -231,12 +317,12 @@ async function toggleVote(id) {
     if (typeof window !== "undefined") {
       const sp = new URLSearchParams(window.location.search);
       const focusParam = sp.get("focus");
+      const openCommentsParam = sp.get("openComments"); // Check this too
+      
       if (focusParam && /^\d+$/.test(focusParam)) {
-        const num = Number(focusParam);
-        if (!isNaN(num)) {
-          // @ts-ignore - targetId can be number or null
-          targetId = num;
-        }
+         targetId = Number(focusParam);
+      } else if (openCommentsParam && /^\d+$/.test(openCommentsParam)) {
+         targetId = Number(openCommentsParam);
       }
       if (!targetId) {
         const hash = window.location.hash || "";
@@ -250,11 +336,23 @@ async function toggleVote(id) {
         }
       }
     }
-    if (targetId && ideasData?.data?.length) {
+      if (targetId && ideasData?.data?.length) {
       // delay slightly to ensure refs are set after render
       const numId = Number(targetId);
       if (!isNaN(numId)) {
-        const t = setTimeout(() => scrollToIdea(numId), 60);
+        const t = setTimeout(() => {
+             scrollToIdea(numId);
+             
+             // Check if we should also open comments
+             const sp = new URLSearchParams(window.location.search);
+             const openCommentsId = sp.get("openComments");
+             if (openCommentsId && Number(openCommentsId) === numId) {
+                 const idea = ideasData.data.find(i => i.id === numId);
+                 if (idea) {
+                     openCommentsSidebar(numId, idea.title);
+                 }
+             }
+        }, 60);
         return () => clearTimeout(t);
       }
     }
@@ -263,10 +361,7 @@ async function toggleVote(id) {
   return (
     <div className="min-h-screen relative">
       {/* 🌈 Fixed Prismatic Burst Background */}
-      <div
-        className="fixed inset-0 pointer-events-none mix-blend-screen opacity-70 z-0"
-        style={{ overflow: "hidden" }}
-      >
+   <div className="absolute inset-0 mix-blend-screen opacity-70 z-0">
         <PrismaticBurst
           intensity={0.6}
           speed={0.6}
@@ -276,7 +371,7 @@ async function toggleVote(id) {
       </div>
 
       {/* Main Layout Container */}
-      <div className="absolute z-10 mt-12 flex min-h-[calc(100vh-80px)] w-full">
+      <div className="relative z-10  flex min-h-[calc(100vh-80px)] w-full">
           {/* 🧭 Left Ranking Sidebar */}
         {sortedIdeas.length > 0 && (
           <aside
@@ -372,19 +467,124 @@ async function toggleVote(id) {
                               {idea.description}
                             </div>
 
+                            {/* Reaction Counts */}
+                            {reactionCounts[idea.id] && Object.keys(reactionCounts[idea.id]).length > 0 && (
+                                <div className="flex gap-2 mb-2 flex-wrap">
+                                    {Object.entries(reactionCounts[idea.id]).map(([type, count]) => (
+                                        <div key={type} className="flex items-center bg-white/5 rounded-full px-2 py-1 text-xs text-gray-300 border border-white/5">
+                                            <span className="mr-1">{
+                                                {
+                                                    "LIKE": "👍", "LOVE": "❤️", "HAHA": "😂", 
+                                                    "WOW": "😮", "SAD": "😢", "ANGRY": "😡"
+                                                }[type]
+                                            }</span>
+                                            <span>{count}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
                             <div className="space-y-3">
                               <div className="flex items-center justify-between pt-3 border-t border-white/10">
-                                <motion.button
-                                  onClick={() => toggleVote(idea.id)}
-                                  disabled={animating[idea.id] || votedIds.has(idea.id)}
-                                  className={`flex items-center gap-2 text-sm px-4 py-2 rounded-full transition-all
-                                    ${votedIds.has(idea.id)
-                                      ? "bg-green-500 cursor-not-allowed"
-                                      : "bg-gradient-to-r from-purple-500 to-pink-500 hover:scale-105"
-                                    }`}
-                                >
-                                  {votedIds.has(idea.id) ? "Voted" : "Upvote"}
-                                </motion.button>
+                                <div className="flex items-center gap-2">
+                                    {/* Upvote Button */}
+                                    <motion.button
+                                      onClick={() => toggleVote(idea.id)}
+                                      disabled={animating[idea.id]}
+                                      whileHover={{ scale: 1.05 }}
+                                      whileTap={{ scale: 0.95 }}
+                                      className={`flex items-center gap-2 text-sm px-4 py-2 rounded-full transition-all
+                                        ${votedIds.has(idea.id)
+                                          ? "bg-green-500 text-white shadow-lg shadow-green-500/20"
+                                          : "bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10"
+                                        }`}
+                                    >
+                                      <BiUpArrowAlt className="text-lg" />
+                                      <span>{votedIds.has(idea.id) ? "Upvoted" : "Upvote"}</span>
+                                    </motion.button>
+
+                                  {/* Reaction Button (Click to Open Menu) */}
+<div className="relative select-none">
+  
+  {/* CLICK opens/closes menu */}
+  <div onClick={() => 
+      setHoveredIdeaId(prev => prev === idea.id ? null : idea.id)
+  }>
+    <motion.button
+      whileHover={{ scale: 1.05 }}
+      whileTap={{ scale: 0.92 }}
+      className={`flex items-center gap-2 text-sm px-4 py-2 rounded-full transition-all relative
+        ${
+          userReactions[idea.id]
+            ? "bg-gradient-to-r from-pink-500 to-rose-500 text-white shadow-lg shadow-pink-500/30"
+            : "bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10"
+        }`}
+    >
+      {/* Fire pulse only when no reaction */}
+      {!userReactions[idea.id] ? (
+        <motion.div
+          animate={{ scale: [1, 1.25, 1] }}
+          transition={{ repeat: Infinity, duration: 1.7 }}
+        >
+          <FaFire className="text-orange-400 text-lg" />
+        </motion.div>
+      ) : (
+        <span className="text-xl">
+          {{
+            LIKE: "👍",
+            LOVE: "❤️",
+            HAHA: "😂",
+            WOW: "😮",
+            SAD: "😢",
+            ANGRY: "😡",
+          }[userReactions[idea.id]]}
+        </span>
+      )}
+    </motion.button>
+  </div>
+
+  {/* Reaction Menu */}
+  {hoveredIdeaId === idea.id && (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.6, y: 15 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.6 }}
+      transition={{ type: "spring", stiffness: 260, damping: 18 }}
+      className="absolute -top-20 left-1/2 -translate-x-1/2 
+                 bg-white/10 backdrop-blur-xl border border-white/20
+                 rounded-full px-4 py-3 flex items-center gap-4 
+                 shadow-xl shadow-purple-500/20 z-20"
+    >
+      {[
+        { t: "LIKE", e: "👍" },
+        { t: "LOVE", e: "❤️" },
+        { t: "HAHA", e: "😂" },
+        { t: "WOW", e: "😮" },
+        { t: "SAD", e: "😢" },
+        { t: "ANGRY", e: "😡" },
+      ].map((r) => (
+        <motion.button
+          key={r.t}
+          whileHover={{ scale: 1.35 }}
+          whileTap={{ scale: 0.9 }}
+          onClick={() => {
+            handleReaction(idea.id, r.t);
+            setHoveredIdeaId(null); // close menu after selecting
+          }}
+          className={`text-2xl transition-all ${
+            userReactions[idea.id] === r.t
+              ? "drop-shadow-[0_0_12px_rgba(255,255,255,0.9)]"
+              : ""
+          }`}
+        >
+          {r.e}
+        </motion.button>
+      ))}
+    </motion.div>
+  )}
+</div>
+
+                                </div>
 
                                 <div className="flex items-center gap-3">
                                   <motion.button

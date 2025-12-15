@@ -8,5 +8,7 @@ import java.util.Optional;
 
 public interface VoteRepository extends JpaRepository<Vote, Long> {
     Optional<Vote> findByIdeaAndUser(Idea idea, User user);
+    java.util.List<Vote> findByIdea(Idea idea);
+    java.util.List<Vote> findByUser(User user);
     long countByIdea(Idea idea);
 }

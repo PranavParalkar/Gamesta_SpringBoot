@@ -37,12 +37,12 @@ export default function Home() {
               </div>
               <div className="flex flex-col sm:flex-row gap-4 justify-center items-center pt-8">
                 <Link to="/ideas">
-                <Button size="lg" className="bg-gradient-to-l from-pink-300 to-purple-500 text-primary hover:bg-white/90 text-lg px-8 py-3">
+                <Button size="lg" className="bg-pink-500 hover:bg-pink-500/70  text-primary text-lg px-8 py-3">
                   Explore Ideas
                 </Button>
                 </Link>
                 <Link to="/submit">
-                  <Button variant="outline" size="lg" className="border-white text-white hover:bg-white hover:text-primary text-lg px-8 py-3">
+                  <Button  size="lg" className="border-white hover:bg-purple-700/70 text-white bg-purple-700 hover:text-primary text-lg px-8 py-3">
                     Submit Your Idea
                   </Button>
                 </Link>

@@ -5,6 +5,7 @@ import java.time.Instant;
 
 @Entity
 @Table(name = "event_registrations")
+@com.fasterxml.jackson.annotation.JsonIgnoreProperties({"hibernateLazyInitializer","handler"})
 public class EventRegistration {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
