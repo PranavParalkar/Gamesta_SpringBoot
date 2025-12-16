@@ -138,8 +138,17 @@ public class AdminController {
             return ResponseEntity.badRequest().body(Map.of("error", "name and price required"));
         }
 
+        // Parse optional ticketLimit
+        Object limitObj = body.get("ticketLimit");
+        Integer ticketLimit = null;
+        if (limitObj instanceof Number) {
+            ticketLimit = ((Number) limitObj).intValue();
+        } else if (limitObj instanceof String) {
+            try { ticketLimit = Integer.parseInt((String) limitObj); } catch (Exception e) { ticketLimit = null; }
+        }
+
         try {
-            EventCatalog event = new EventCatalog(name, price, null, true);
+            EventCatalog event = new EventCatalog(name, price, ticketLimit, true);
             eventCatalogRepository.save(event);
             return ResponseEntity.ok(Map.of("status", "created", "data", event));
         } catch (Exception e) {

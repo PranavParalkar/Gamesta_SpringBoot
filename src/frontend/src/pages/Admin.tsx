@@ -138,7 +138,8 @@ export default function Admin() {
   // Add Event Logic
   const [isAddEventOpen, setIsAddEventOpen] = useState(false);
   const [newEventName, setNewEventName] = useState("");
-  const [newEventPrice, setNewEventPrice] = useState("");
+    const [newEventPrice, setNewEventPrice] = useState("");
+    const [newEventLimit, setNewEventLimit] = useState("");
 
   const handleCreateEvent = async () => {
     if(!newEventName || !newEventPrice) return toast.error("Name and Price required");
@@ -150,7 +151,7 @@ export default function Admin() {
                 "Content-Type": "application/json",
                 Authorization: `Bearer ${token}`
             },
-            body: JSON.stringify({ name: newEventName, price: newEventPrice })
+            body: JSON.stringify({ name: newEventName, price: newEventPrice, ticketLimit: newEventLimit || null })
         });
         
         if(!res.ok) throw new Error("Failed");
@@ -161,6 +162,7 @@ export default function Admin() {
         setIsAddEventOpen(false);
         setNewEventName("");
         setNewEventPrice("");
+        setNewEventLimit("");
     } catch(e) {
         toast.error("Failed to create event", { id: t });
     }
@@ -267,8 +269,8 @@ export default function Admin() {
   if (loading) return <LoadingScreen />;
   if (!isAdmin) return <AccessDenied />;
 
-  const NavContent = () => (
-    <>
+    const NavContent = () => (
+                                                <div>
         <div className="p-6">
             <h1 className="text-2xl font-bold bg-gradient-to-r from-purple-400 to-pink-500 bg-clip-text text-transparent">
                 Gamesta
@@ -306,7 +308,7 @@ export default function Admin() {
                 Exit Dashboard
             </Button>
         </div>
-    </>
+        </div>
   );
 
   return (

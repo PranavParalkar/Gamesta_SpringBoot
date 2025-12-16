@@ -72,7 +72,32 @@ public class IdeaController {
         return ResponseEntity.ok(Map.of("data", enrichedList));
     }
 
-    // ... create, update, delete methods ...
+    @PostMapping
+    public ResponseEntity<?> create(@RequestHeader(value = "Authorization", required = false) String auth,
+                                    @RequestBody Map<String, Object> body) {
+        User user = resolveUser(auth);
+        if (user == null) return ResponseEntity.status(401).body(Map.of("error", "unauthorized"));
+
+        String title = (String) body.get("title");
+        String description = (String) body.getOrDefault("description", "");
+        if (title == null || title.trim().isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "title is required"));
+        }
+
+        Idea created = ideaService.createIdea(title.trim(), description, user);
+
+        Map<String, Object> result = new java.util.HashMap<>();
+        result.put("id", created.getId());
+        result.put("title", created.getTitle());
+        result.put("description", created.getDescription());
+        result.put("score", created.getScore());
+        result.put("upvoteCount", created.getUpvoteCount());
+        result.put("createdAt", created.getCreatedAt());
+        result.put("author_name", created.getAuthorName());
+        result.put("reaction_counts", Map.of());
+
+        return ResponseEntity.ok(Map.of("data", result));
+    }
 
     @PostMapping("/{id}/vote")
     public ResponseEntity<?> vote(@RequestHeader(value = "Authorization", required = false) String auth, @PathVariable Long id, @RequestBody Map<String,Object> body) {
