@@ -136,4 +136,22 @@ public class UserProfileController {
         
         return ResponseEntity.ok(Map.of("status","ok","count", saved.size()));
     }
+
+    // --- Test Email ---
+    @GetMapping("/email/test")
+    public ResponseEntity<?> testEmail(@RequestHeader(value = "Authorization", required = false) String auth) {
+        var user = resolveUser(auth);
+        if (user == null) return ResponseEntity.status(401).body(Map.of("error","unauthorized"));
+        try {
+            emailService.sendRegistrationConfirmation(
+                    user.getEmail(),
+                    user.getName(),
+                    List.of("Test Event"),
+                    "TEST-ORDER",
+                    "TEST-PAY",
+                    0
+            );
+        } catch (Exception ignored) {}
+        return ResponseEntity.ok(Map.of("status","triggered"));
+    }
 }

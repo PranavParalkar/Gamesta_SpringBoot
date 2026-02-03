@@ -1,0 +1,23 @@
+# Maven/Java build artifacts
+/target
+
+# Node/Vite build artifacts
+src/frontend/node_modules
+src/frontend/dist
+
+# IDE/editor files
+/.idea
+/.vscode
+*.iml
+
+# Git
+/.git
+/.gitignore
+
+# Local environment files
+.env
+.env.*
+
+# OS files
+Thumbs.db
+.DS_Store
