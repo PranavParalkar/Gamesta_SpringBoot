@@ -103,6 +103,7 @@ Resources:
                 Resource: '*'
               - Effect: Allow
                 Action:
+                  - ssm:DescribeInstanceInformation
                   - ssm:SendCommand
                   - ssm:GetCommandInvocation
                   - ssm:ListCommandInvocations
