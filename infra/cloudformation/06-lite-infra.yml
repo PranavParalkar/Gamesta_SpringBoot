@@ -1,0 +1,188 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Activity-3 low-cost infra stack (EC2 + S3 website + IAM)
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: gamesta
+  EnvironmentName:
+    Type: String
+    Default: lite
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC where EC2 instance will be launched
+  PublicSubnetId:
+    Type: AWS::EC2::Subnet::Id
+    Description: Public subnet for EC2 instance
+  InstanceType:
+    Type: String
+    Default: t3.micro
+    AllowedValues:
+      - t3.micro
+      - t2.micro
+      - t3.small
+  KeyName:
+    Type: String
+    Description: Optional EC2 key pair for SSH
+    Default: ''
+  AllowedSshCidr:
+    Type: String
+    Default: 0.0.0.0/0
+    Description: Restrict this in production
+  AllowedHttpCidr:
+    Type: String
+    Default: 0.0.0.0/0
+  AllowedAppCidr:
+    Type: String
+    Default: 0.0.0.0/0
+  LatestAmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
+
+Conditions:
+  HasKeyName: !Not [!Equals [!Ref KeyName, '']]
+
+Resources:
+  LiteFrontendBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ${ProjectName}-${EnvironmentName}-${AWS::AccountId}-${AWS::Region}-frontend-lite
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: index.html
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        IgnorePublicAcls: false
+        BlockPublicPolicy: false
+        RestrictPublicBuckets: false
+
+  LiteFrontendBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref LiteFrontendBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: PublicReadForWebsite
+            Effect: Allow
+            Principal: '*'
+            Action: s3:GetObject
+            Resource: !Sub arn:aws:s3:::${LiteFrontendBucket}/*
+
+  LiteEc2Role:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Policies:
+        - PolicyName: ec2-s3-read-policy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub arn:aws:s3:::${LiteFrontendBucket}
+                  - !Sub arn:aws:s3:::${LiteFrontendBucket}/*
+
+  LiteEc2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref LiteEc2Role
+
+  LiteEc2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow SSH, HTTP and backend app port
+      VpcId: !Ref VpcId
+
+  LiteEc2SecurityGroupIngressSsh:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref LiteEc2SecurityGroup
+      IpProtocol: tcp
+      FromPort: 22
+      ToPort: 22
+      CidrIp: !Ref AllowedSshCidr
+
+  LiteEc2SecurityGroupIngressHttp:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref LiteEc2SecurityGroup
+      IpProtocol: tcp
+      FromPort: 80
+      ToPort: 80
+      CidrIp: !Ref AllowedHttpCidr
+
+  LiteEc2SecurityGroupIngressApp:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref LiteEc2SecurityGroup
+      IpProtocol: tcp
+      FromPort: 8080
+      ToPort: 8080
+      CidrIp: !Ref AllowedAppCidr
+
+  LiteEc2SecurityGroupEgress:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref LiteEc2SecurityGroup
+      IpProtocol: -1
+      CidrIp: 0.0.0.0/0
+
+  LiteEc2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref LatestAmiId
+      InstanceType: !Ref InstanceType
+      IamInstanceProfile: !Ref LiteEc2InstanceProfile
+      KeyName: !If [HasKeyName, !Ref KeyName, !Ref AWS::NoValue]
+      SubnetId: !Ref PublicSubnetId
+      SecurityGroupIds:
+        - !Ref LiteEc2SecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub ${ProjectName}-${EnvironmentName}-ec2
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -e
+          dnf update -y
+          dnf install -y docker docker-compose-plugin git unzip
+          systemctl enable docker
+          systemctl start docker
+          usermod -aG docker ec2-user
+          mkdir -p /opt/gamesta
+
+  LiteEc2Eip:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+
+  LiteEc2EipAssociation:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      AllocationId: !GetAtt LiteEc2Eip.AllocationId
+      InstanceId: !Ref LiteEc2Instance
+
+Outputs:
+  Ec2InstanceId:
+    Value: !Ref LiteEc2Instance
+  Ec2PublicIp:
+    Value: !Ref LiteEc2Eip
+  Ec2PublicDns:
+    Value: !GetAtt LiteEc2Instance.PublicDnsName
+  FrontendBucketName:
+    Value: !Ref LiteFrontendBucket
+  FrontendWebsiteUrl:
+    Value: !GetAtt LiteFrontendBucket.WebsiteURL

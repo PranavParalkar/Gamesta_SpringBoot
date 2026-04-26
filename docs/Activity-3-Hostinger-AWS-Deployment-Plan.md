@@ -1,208 +1,142 @@
-# Activity-3 Deployment Plan (AWS + Hostinger, No Route53)
+# Activity-3 Low-Cost Deployment Plan (AWS + Hostinger)
 
-This guide deploys your project using AWS services and Hostinger DNS only.
+This version is optimized for minimum monthly cost while still fulfilling Activity-3 requirements.
 
-Scope:
-- Use CloudFormation for infra
-- Use CodePipeline/CodeBuild for CI/CD
-- Use Hostinger for DNS and ACM validation
-- Do not create or use Route53 records
+What is kept:
+- Architecture diagram (updated to simple architecture)
+- Infrastructure as Code using CloudFormation
+- CI/CD pipeline (CodePipeline + CodeBuild)
+- Domain mapping via Hostinger DNS
 
-## 1) Fixed Inputs
+What is removed to cut cost:
+- ECS Fargate
+- ALB
+- NAT Gateway
+- RDS MySQL
+- CloudFront
+- ECR
 
-- AWS region (stacks): `ap-south-1`
-- CloudFront certificate region: `us-east-1`
+## 1) Low-Cost Architecture
+
+- Frontend: S3 static website hosting
+- Backend: Single EC2 `t3.micro` instance (Docker Compose: Spring Boot + MySQL)
+- CI/CD: One CodePipeline + one CodeBuild project (build + deploy)
+- DNS: Hostinger DNS records for frontend and API
+
+This gives a working end-to-end deployment for academic activity with much lower cost than the previous architecture.
+
+## 2) Estimated Monthly Cost (Approx, ap-south-1)
+
+- EC2 `t3.micro` (on-demand): low cost (main runtime cost)
+- S3 static hosting: very low
+- CodePipeline + occasional CodeBuild: low for student usage
+- Data transfer and storage: low for demo traffic
+
+Important: your final bill depends on traffic, build frequency, and storage usage.
+
+## 3) Fixed Inputs
+
+- AWS region: `ap-south-1`
 - Root domain: `gamesta.in`
-- API subdomain (you create in Hostinger): `api.gamesta.in`
+- API subdomain: `api.gamesta.in`
 - GitHub repo: `PranavParalkar/Gamesta_SpringBoot`
 
-## 2) What Changes vs Original Route53 Plan
+## 4) Stack Plan (CloudFormation)
 
-1. Deploy stacks:
-- `gamesta-network`
-- `gamesta-backend`
-- `gamesta-frontend`
-- `gamesta-cicd`
+Use two minimal stacks for the activity submission.
 
-2. Skip stack:
-- `gamesta-dns` (template `infra/cloudformation/04-dns.yml`)
+### Stack A: `gamesta-lite-infra`
 
-3. DNS records are created manually in Hostinger.
+Should create:
+- 1 EC2 instance
+- 1 security group (allow `22`, `80`, and backend app port like `8080` as needed)
+- 1 S3 bucket for frontend
+- 1 IAM role/instance profile for EC2 (SSM + S3 read access if needed)
 
-## 3) Pre-Setup Checklist
-
-1. Hostinger domain `gamesta.in` is active.
-2. GitHub repository is accessible.
-3. In AWS, set region to `ap-south-1` for stack deployment.
-4. Prepare secrets:
-- DB password
-- Admin secret
-5. Create CodeStar connection in AWS Developer Tools and keep ARN.
-
-## 4) ACM Certificate (Important)
-
-CloudFront custom domain cert must be in `us-east-1`.
-
-1. Open ACM in `us-east-1`.
-2. Request public certificate for:
-- `gamesta.in`
-- `*.gamesta.in`
-3. Choose DNS validation.
-4. ACM will show CNAME validation records.
-5. Go to Hostinger DNS zone and add all ACM CNAME records exactly.
-6. Wait until ACM status becomes `Issued`.
-
-## 5) Deploy CloudFormation Stacks (Console)
-
-Use AWS Console -> CloudFormation -> Create stack -> With new resources.
-
-### Stack A: Network
-
-- Template: `infra/cloudformation/01-network.yml`
-- Stack name: `gamesta-network`
-- Use default CIDR parameters.
-- After `CREATE_COMPLETE`, note outputs:
-- `VpcId`
-- `PublicSubnet1Id`
-- `PublicSubnet2Id`
-- `PrivateSubnet1Id`
-- `PrivateSubnet2Id`
-
-### Stack B: Backend
-
-- Template: `infra/cloudformation/02-backend.yml`
-- Stack name: `gamesta-backend`
-- Parameters:
-- VPC/subnet values from network stack
-- `BackendImage = public.ecr.aws/docker/library/nginx:latest` (bootstrap image)
-- `DbPassword = <your value>`
-- `AdminSecret = <your value>`
-- After `CREATE_COMPLETE`, note outputs:
-- `EcrRepositoryUri`
-- `ClusterName`
-- `ServiceName`
-- `AlbDnsName`
-- `AlbHostedZoneId`
-
-### Stack C: Frontend
-
-- Template: `infra/cloudformation/03-frontend.yml`
-- Stack name: `gamesta-frontend`
-- Parameters:
-- `FrontendDomainName = gamesta.in`
-- `AcmCertificateArn = <ACM ARN from us-east-1>`
-- After `CREATE_COMPLETE`, note outputs:
+Outputs to keep:
+- `Ec2PublicIp`
+- `Ec2PublicDns`
 - `FrontendBucketName`
-- `CloudFrontDistributionId`
-- `CloudFrontDomainName`
 
-## 6) Create DNS Records in Hostinger (No Route53)
+### Stack B: `gamesta-lite-cicd`
 
-Use Hostinger -> Domains -> DNS Zone Editor for `gamesta.in`.
+Should create:
+- CodeStar connection (or use existing ARN)
+- CodePipeline
+- CodeBuild project
+- Artifact S3 bucket
 
-### Record 1: API
+Pipeline behavior:
+- Source from GitHub
+- Build frontend and sync `dist/` to frontend S3 bucket
+- Build backend image/app and deploy to EC2 via SSH/SSM
 
-Create:
-- Type: `CNAME`
-- Name/Host: `api`
-- Target/Points to: `<AlbDnsName>`
-- TTL: `300` (or default)
+## 5) EC2 Runtime Setup (One-Time)
 
-Result: `api.gamesta.in` -> ALB
+On EC2 instance:
+1. Install Docker and Docker Compose plugin.
+2. Create app folder, for example `/opt/gamesta`.
+3. Keep a `docker-compose.yml` with:
+- Spring Boot app container
+- MySQL container
+4. Open only required inbound ports in security group.
+5. Test backend locally on instance, then from browser using `http://<ec2-public-ip>:8080`.
 
-### Record 2: Frontend Root Domain
+For activity/demo, this single-instance setup is acceptable and much cheaper than ECS + RDS.
 
-You need `gamesta.in` -> CloudFront.
+## 6) Frontend Hosting on S3
 
-Preferred if Hostinger supports it:
-- Type: `ALIAS` or `ANAME`
-- Name: `@`
-- Target: `<CloudFrontDomainName>`
+1. Enable static website hosting on frontend S3 bucket.
+2. Configure bucket policy for public read (only for static frontend files).
+3. Build frontend in pipeline and upload `dist/` to this bucket.
 
-If Hostinger does not support ALIAS/ANAME for apex:
-1. Create `www` CNAME -> `<CloudFrontDomainName>`
-2. Add domain forwarding: `gamesta.in` -> `https://www.gamesta.in`
-3. In this case, frontend canonical URL should be `https://www.gamesta.in`
+URL (temporary before DNS): S3 website endpoint from bucket properties.
 
-## 7) Create CI/CD Stack
+## 7) Hostinger DNS (No Route53)
 
-### Step 1: CodeStar Connection
+Create records in Hostinger DNS zone for `gamesta.in`:
 
-1. Open Developer Tools -> Settings -> Connections.
-2. Create GitHub connection.
-3. Complete authorization.
-4. Copy connection ARN.
+1. Frontend record
+- Type: `CNAME` (for `www`) or A record depending on your setup
+- Host: `www`
+- Target: S3 website endpoint hostname
 
-### Step 2: Deploy CICD Stack
+2. API record
+- Type: `A`
+- Host: `api`
+- Target: `<Ec2PublicIp>`
 
-- Template: `infra/cloudformation/05-cicd.yml`
-- Stack name: `gamesta-cicd`
-- Parameters:
-- `ConnectionArn = <CodeStar ARN>`
-- `FullRepositoryId = PranavParalkar/Gamesta_SpringBoot`
-- `BranchName = main`
-- `EcrRepositoryUri = <from backend stack>`
-- `EcsClusterName = <from backend stack>`
-- `EcsServiceName = <from backend stack>`
-- `FrontendBucketName = <from frontend stack>`
-- `CloudFrontDistributionId = <from frontend stack>`
-- `ViteApiBaseUrl = http://api.gamesta.in`
+3. Optional root redirect
+- Redirect `gamesta.in` to `www.gamesta.in`
 
-### Step 3: First Run
+## 8) CI/CD Steps
 
-1. Open CodePipeline.
-2. Open pipeline `gamesta-dev-pipeline`.
-3. Approve authorization if Source stage asks.
-4. Release change.
+1. Create/authorize CodeStar connection to GitHub.
+2. Deploy `gamesta-lite-cicd` stack with repo and branch details.
+3. Ensure buildspec has two tasks:
+- Frontend build and S3 sync
+- Backend deploy to EC2 (SSH/SSM command)
+4. Trigger first pipeline run.
+5. Validate backend and frontend URLs.
 
-## 8) Validation Checklist
+## 9) Validation Checklist for Submission
 
-1. CloudFormation stacks in `CREATE_COMPLETE`:
-- `gamesta-network`
-- `gamesta-backend`
-- `gamesta-frontend`
-- `gamesta-cicd`
+1. Architecture diagram showing S3 + EC2 + CI/CD + DNS.
+2. CloudFormation stack(s) in `CREATE_COMPLETE`.
+3. Pipeline execution success screenshot.
+4. Working URLs:
+- `http://api.gamesta.in` (or `http://api.gamesta.in:8080` if port not proxied)
+- `http://www.gamesta.in` (or root redirect target)
 
-2. CodePipeline success:
-- Source success
-- BuildBackend success
-- BuildAndDeployFrontend success
-- DeployBackend success
+## 10) Trade-Offs (Mention in Viva)
 
-3. App URLs:
-- `https://gamesta.in` (or `https://www.gamesta.in` if apex fallback used)
-- `http://api.gamesta.in`
+- This is cost-optimized for assignment/demo, not high availability production.
+- Single EC2 is a single point of failure.
+- No managed RDS backups by default.
+- No CloudFront edge caching.
 
-4. Runtime health:
-- ECS service has healthy tasks
-- ALB target group healthy
+## 11) If Evaluator Strictly Requires Route53
 
-## 9) Common Issues and Quick Fixes
+If rubric mandates Route53 specifically, create a minimal hosted zone and two records there, but keep runtime architecture unchanged (still EC2 + S3 + simple CI/CD).
 
-1. CloudFront certificate error
-- Cert must be in `us-east-1`.
-- Cert status must be `Issued`.
-
-2. `api.gamesta.in` not resolving
-- Check Hostinger CNAME `api` -> correct ALB DNS.
-- Wait for DNS propagation (5 to 30 minutes, sometimes longer).
-
-3. Frontend domain not opening
-- Confirm root/apex record strategy (ALIAS/ANAME or www + redirect).
-- Verify CloudFront distribution is deployed.
-
-4. Frontend cannot call API
-- Confirm CICD parameter `ViteApiBaseUrl` is `http://api.gamesta.in`.
-- Re-run pipeline after fixing parameter.
-
-5. ECS deploy fails image not found
-- Check BuildBackend logs and ECR push.
-
-## 10) Submission Notes (If Rubric Mentions Route53)
-
-If your rubric strictly requires Route53 screenshots, this Hostinger-only approach may lose marks for that single item. Functional deployment is still valid and production-capable with external DNS.
-
-For transparent submission, mention:
-- DNS provider used: Hostinger
-- Route53 stack intentionally skipped
-- Equivalent DNS records configured manually
+That keeps compliance while remaining low cost.

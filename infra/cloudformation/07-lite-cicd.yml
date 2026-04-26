@@ -1,0 +1,186 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Activity-3 low-cost CI/CD stack (CodePipeline + one CodeBuild deployer)
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: gamesta
+  EnvironmentName:
+    Type: String
+    Default: lite
+  ConnectionArn:
+    Type: String
+    Description: CodeStar connection ARN for GitHub
+  FullRepositoryId:
+    Type: String
+    Description: owner/repo
+  BranchName:
+    Type: String
+    Default: main
+  FrontendBucketName:
+    Type: String
+  Ec2InstanceId:
+    Type: String
+  ViteApiBaseUrl:
+    Type: String
+    Default: http://api.gamesta.in
+  DbPassword:
+    Type: String
+    NoEcho: true
+    Default: changeme123
+  AdminSecret:
+    Type: String
+    NoEcho: true
+    Default: changeme
+
+Resources:
+  ArtifactBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      VersioningConfiguration:
+        Status: Enabled
+
+  PipelineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codepipeline.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: pipeline-policy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:PutObject
+                Resource:
+                  - !GetAtt ArtifactBucket.Arn
+                  - !Sub ${ArtifactBucket.Arn}/*
+              - Effect: Allow
+                Action:
+                  - codestar-connections:UseConnection
+                Resource: !Ref ConnectionArn
+              - Effect: Allow
+                Action:
+                  - codebuild:BatchGetBuilds
+                  - codebuild:StartBuild
+                Resource: !GetAtt LiteBuildProject.Arn
+
+  BuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: build-policy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                  - s3:ListBucket
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - ssm:SendCommand
+                  - ssm:GetCommandInvocation
+                  - ssm:ListCommandInvocations
+                Resource: '*'
+
+  LiteBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Sub ${ProjectName}-${EnvironmentName}-build-deploy
+      ServiceRole: !GetAtt BuildRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:7.0
+        Type: LINUX_CONTAINER
+        EnvironmentVariables:
+          - Name: FRONTEND_BUCKET
+            Value: !Ref FrontendBucketName
+          - Name: API_BASE_URL
+            Value: !Ref ViteApiBaseUrl
+          - Name: EC2_INSTANCE_ID
+            Value: !Ref Ec2InstanceId
+          - Name: REPO_CLONE_URL
+            Value: !Sub https://github.com/${FullRepositoryId}.git
+          - Name: BRANCH_NAME
+            Value: !Ref BranchName
+          - Name: DB_PASSWORD
+            Value: !Ref DbPassword
+          - Name: ADMIN_SECRET
+            Value: !Ref AdminSecret
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: buildspec-lite.yml
+
+  Pipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      Name: !Sub ${ProjectName}-${EnvironmentName}-pipeline
+      RoleArn: !GetAtt PipelineRole.Arn
+      ArtifactStore:
+        Type: S3
+        Location: !Ref ArtifactBucket
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: SourceFromGitHub
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Provider: CodeStarSourceConnection
+                Version: '1'
+              OutputArtifacts:
+                - Name: SourceOutput
+              Configuration:
+                ConnectionArn: !Ref ConnectionArn
+                FullRepositoryId: !Ref FullRepositoryId
+                BranchName: !Ref BranchName
+                DetectChanges: 'true'
+              RunOrder: 1
+        - Name: BuildAndDeploy
+          Actions:
+            - Name: BuildFrontendAndDeployEc2
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: '1'
+              InputArtifacts:
+                - Name: SourceOutput
+              Configuration:
+                ProjectName: !Ref LiteBuildProject
+              RunOrder: 1
+
+Outputs:
+  PipelineName:
+    Value: !Ref Pipeline
+  BuildProjectName:
+    Value: !Ref LiteBuildProject
+  ArtifactBucketName:
+    Value: !Ref ArtifactBucket

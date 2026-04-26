@@ -1,185 +1,102 @@
-# Activity-3 AWS Console Execution Plan
+# Activity-3 AWS Console Execution Plan (Low-Cost)
 
-This plan is for AWS Console execution (no CLI required), aligned to grading criteria:
+This plan keeps only minimum services needed to complete the activity.
 
-1. Architecture Diagram
-2. Infrastructure using CloudFormation
-3. CI/CD Pipeline
-4. Domain Name using Route53
+## Criteria Mapping
+
+1. Architecture diagram: use low-cost diagram from docs folder.
+2. Infrastructure as Code: deploy CloudFormation stack(s).
+3. CI/CD: use CodePipeline + CodeBuild.
+4. Domain: configure Hostinger DNS or Route53 if strictly required.
 
 ## Fixed Inputs
 
-- AWS Region for stack resources: ap-south-1
+- Region: ap-south-1
 - Frontend domain: gamesta.in
 - API domain: api.gamesta.in
-- GitHub repo: PranavParalkar/Gamesta_SpringBoot
-- CloudFront certificate region: us-east-1 (mandatory)
+- Repo: PranavParalkar/Gamesta_SpringBoot
 
-## A) Pre-Setup in Console
+## A) Pre-Setup
 
-1. Sign in to AWS Console and set region to ap-south-1.
-2. Ensure Route53 hosted zone exists for gamesta.in.
-3. Request ACM certificate in us-east-1 for:
-   - gamesta.in
-   - *.gamesta.in
-4. Validate ACM certificate using DNS validation in Route53.
-5. Keep these values ready for later stack parameters:
-   - Hosted Zone ID (Route53)
-   - ACM certificate ARN (us-east-1)
-   - CodeStar connection ARN (after creating connection)
-   - DB password
-   - Admin secret
+1. Open AWS Console in region ap-south-1.
+2. Keep a GitHub connection ARN ready (CodeStar connection).
+3. Confirm domain DNS control in Hostinger (or Route53 if required by evaluator).
 
-## B) Deploy Infrastructure via CloudFormation (Console)
+## B) CloudFormation Deploy (Console)
 
-Use AWS Console > CloudFormation > Create stack > With new resources (standard).
+### Stack 1: gamesta-lite-infra
 
-### Stack 1: Network
+Template should create:
+- EC2 t3.micro (backend runtime)
+- Security group
+- S3 bucket (frontend static hosting)
+- IAM role/instance profile
 
-1. Template: Upload file infra/cloudformation/01-network.yml.
-2. Stack name: gamesta-network.
-3. Keep default CIDR values.
-4. Create stack.
-5. After CREATE_COMPLETE, open Outputs tab and note:
-   - VpcId
-   - PublicSubnet1Id
-   - PublicSubnet2Id
-   - PrivateSubnet1Id
-   - PrivateSubnet2Id
+After CREATE_COMPLETE, note outputs:
+- Ec2PublicIp
+- Ec2PublicDns
+- FrontendBucketName
 
-### Stack 2: Backend
+### Stack 2: gamesta-lite-cicd
 
-1. Template: Upload file infra/cloudformation/02-backend.yml.
-2. Stack name: gamesta-backend.
-3. Fill parameters:
-   - VpcId = output from network stack
-   - PublicSubnet1Id = output from network stack
-   - PublicSubnet2Id = output from network stack
-   - PrivateSubnet1Id = output from network stack
-   - PrivateSubnet2Id = output from network stack
-   - BackendImage = public.ecr.aws/docker/library/nginx:latest (temporary bootstrap)
-   - DbPassword = your secure value
-   - AdminSecret = your secure value
-4. Create stack.
-5. After CREATE_COMPLETE, open Outputs and note:
-   - EcrRepositoryUri
-   - ClusterName
-   - ServiceName
-   - AlbDnsName
-   - AlbHostedZoneId
+Template should create:
+- CodePipeline
+- CodeBuild
+- Artifact bucket
 
-### Stack 3: Frontend
+Pass parameters:
+- ConnectionArn
+- Repository ID
+- Branch name
+- FrontendBucketName
+- Ec2PublicIp or deployment target details
 
-1. Template: Upload file infra/cloudformation/03-frontend.yml.
-2. Stack name: gamesta-frontend.
-3. Fill parameters:
-   - FrontendDomainName = gamesta.in
-   - AcmCertificateArn = ACM cert ARN from us-east-1
-4. Create stack.
-5. After CREATE_COMPLETE, open Outputs and note:
-   - FrontendBucketName
-   - CloudFrontDistributionId
-   - CloudFrontDomainName
+## C) EC2 One-Time Runtime Setup
 
-### Stack 4: DNS
+1. Connect to EC2.
+2. Install Docker and Docker Compose plugin.
+3. Place backend app + MySQL compose setup in /opt/gamesta.
+4. Start containers and verify backend is reachable.
 
-1. Template: Upload file infra/cloudformation/04-dns.yml.
-2. Stack name: gamesta-dns.
-3. Fill parameters:
-   - HostedZoneId = hosted zone ID of gamesta.in
-   - FrontendDomainName = gamesta.in
-   - ApiDomainName = api.gamesta.in
-   - CloudFrontDomainName = from frontend stack output
-   - AlbDnsName = from backend stack output
-   - AlbHostedZoneId = from backend stack output
-4. Create stack.
-5. Confirm Route53 records are created.
+## D) S3 Frontend Hosting
 
-## C) Configure CI/CD in Console
+1. Enable static website hosting on frontend bucket.
+2. Configure bucket policy for frontend public files.
+3. Confirm S3 website endpoint works.
 
-### Step 1: Create GitHub connection (CodeStar)
+## E) DNS Setup
 
-1. Open Developer Tools > Settings > Connections.
-2. Create connection with GitHub.
-3. Complete OAuth/installation flow.
-4. Save connection and note connection ARN.
+In Hostinger:
+1. `api` A record -> Ec2PublicIp
+2. `www` CNAME -> S3 website endpoint hostname
+3. Optional: root redirect `gamesta.in` -> `www.gamesta.in`
 
-### Step 2: Create CI/CD Stack
+If Route53 is mandatory:
+1. Create hosted zone for `gamesta.in`.
+2. Add equivalent records in Route53.
 
-1. Go to CloudFormation > Create stack.
-2. Template: Upload infra/cloudformation/05-cicd.yml.
-3. Stack name: gamesta-cicd.
-4. Fill parameters:
-   - ConnectionArn = CodeStar connection ARN
-   - FullRepositoryId = PranavParalkar/Gamesta_SpringBoot
-   - BranchName = main
-   - EcrRepositoryUri = backend stack output
-   - EcsClusterName = backend stack output
-   - EcsServiceName = backend stack output
-   - FrontendBucketName = frontend stack output
-   - CloudFrontDistributionId = frontend stack output
-   - ViteApiBaseUrl = http://api.gamesta.in
-5. Create stack.
+## F) CI/CD Validation
 
-### Step 3: Approve pending connection usage
+Pipeline should:
+1. Pull source from GitHub.
+2. Build frontend and upload to S3.
+3. Deploy backend update to EC2 (SSH/SSM step).
 
-1. Open CodePipeline.
-2. Open pipeline gamesta-dev-pipeline.
-3. If Source stage shows authorization required, approve/authorize connection.
-4. Release change to trigger first run.
+## G) Submission Evidence Checklist
 
-## D) Pipeline Success Criteria
+1. Architecture diagram screenshot.
+2. CloudFormation stack(s) CREATE_COMPLETE screenshot.
+3. CodePipeline successful execution screenshot.
+4. DNS records screenshot.
+5. Browser screenshots for frontend and API URLs.
 
-A successful run should show:
+## H) Viva Talking Points
 
-1. Source: GitHub fetch successful.
-2. BuildBackend: Docker image pushed to ECR and imagedefinitions.json generated.
-3. BuildAndDeployFrontend: frontend built and uploaded to S3, CloudFront invalidation completed.
-4. DeployBackend: ECS service updated to new image.
+1. Why this architecture?
+- Lowest-cost approach that still fulfills all assignment components.
 
-## E) Post-Deployment Validation
+2. What was removed?
+- ECS, RDS, ALB, NAT, CloudFront, ECR.
 
-1. Open https://gamesta.in and confirm frontend loads.
-2. Open http://api.gamesta.in and confirm API is reachable.
-3. In ECS Console, verify service has healthy running tasks.
-4. In ALB target group, verify healthy targets.
-5. In CloudFormation, all five stacks must be CREATE_COMPLETE.
-
-## F) Submission Evidence Checklist (Rubric-Mapped)
-
-### 1) Architecture Diagram (5 marks)
-
-- Include final architecture image from docs/Activity-3-Architecture-Diagram.md.
-
-### 2) Infrastructure using CloudFormation (5 marks)
-
-- Screenshot each stack in CREATE_COMPLETE:
-  - gamesta-network
-  - gamesta-backend
-  - gamesta-frontend
-  - gamesta-dns
-  - gamesta-cicd
-
-### 3) CI/CD Pipeline (5 marks)
-
-- Screenshot successful CodePipeline run.
-- Screenshot CodeBuild logs for backend and frontend success.
-- Screenshot ECS deploy stage success.
-
-### 4) Domain Name using Route53 (5 marks)
-
-- Screenshot Route53 records for gamesta.in and api.gamesta.in.
-- Browser screenshot of both URLs resolving.
-
-## G) Common Failure Points and Quick Fixes
-
-1. CloudFront certificate error:
-   - Ensure ACM certificate is in us-east-1, not ap-south-1.
-2. Source stage fails in pipeline:
-   - Re-authorize CodeStar connection.
-3. ECS deploy fails due to image not found:
-   - Verify BuildBackend pushed image to ECR.
-4. Frontend cannot call API:
-   - Verify ViteApiBaseUrl is set to http://api.gamesta.in in cicd stack parameters.
-5. DNS not resolving:
-   - Confirm hosted zone is authoritative for gamesta.in and records are in the correct zone.
+3. Trade-off?
+- Single EC2 instance is simpler and cheaper but not highly available.
