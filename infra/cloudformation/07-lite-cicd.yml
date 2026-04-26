@@ -137,7 +137,90 @@ Resources:
             Value: !Ref AdminSecret
       Source:
         Type: CODEPIPELINE
-        BuildSpec: buildspec-lite.yml
+        BuildSpec: |
+          version: 0.2
+
+          phases:
+            install:
+              runtime-versions:
+                nodejs: 20
+                java: corretto17
+              commands:
+                - echo Installing dependencies for frontend...
+                - cd src/frontend
+                - npm ci --no-audit --no-fund
+                - cd ../..
+            build:
+              commands:
+                - echo Building frontend with API URL $API_BASE_URL
+                - cd src/frontend
+                - export VITE_API_BASE_URL=$API_BASE_URL
+                - npm run build
+                - cd ../..
+            post_build:
+              commands:
+                - echo Syncing frontend dist to S3 bucket $FRONTEND_BUCKET
+                - aws s3 sync src/frontend/dist s3://$FRONTEND_BUCKET --delete
+                - echo Preparing backend deployment command for EC2 instance $EC2_INSTANCE_ID
+                - echo Verifying EC2 instance is online in SSM...
+                - |
+                  MANAGED_INSTANCE_ID=$(aws ssm describe-instance-information \
+                    --filters "Key=InstanceIds,Values=$EC2_INSTANCE_ID" \
+                    --query "InstanceInformationList[0].InstanceId" \
+                    --output text 2>/dev/null || true)
+                - |
+                  if [ -z "$MANAGED_INSTANCE_ID" ] || [ "$MANAGED_INSTANCE_ID" = "None" ]; then
+                    echo "EC2 instance $EC2_INSTANCE_ID is not available in SSM."
+                    echo "Check: instance profile has AmazonSSMManagedInstanceCore, instance is running, and outbound internet access works."
+                    exit 1
+                  fi
+                - DB_PASSWORD_B64=$(printf '%s' "$DB_PASSWORD" | base64 | tr -d '\n')
+                - ADMIN_SECRET_B64=$(printf '%s' "$ADMIN_SECRET" | base64 | tr -d '\n')
+                - |
+                  cat > ssm-commands.json <<EOF
+                  {
+                    "commands": [
+                      "set -e",
+                      "sudo mkdir -p /opt/gamesta",
+                      "if [ ! -d /opt/gamesta/.git ]; then sudo git clone ${REPO_CLONE_URL} /opt/gamesta; else sudo git -C /opt/gamesta fetch --all; fi",
+                      "sudo git -C /opt/gamesta checkout ${BRANCH_NAME}",
+                      "sudo git -C /opt/gamesta reset --hard origin/${BRANCH_NAME}",
+                      "echo MYSQL_ROOT_PASSWORD=$(echo ${DB_PASSWORD_B64} | base64 -d) | sudo tee /opt/gamesta/.env",
+                      "echo MYSQL_DATABASE=gamesta | sudo tee -a /opt/gamesta/.env",
+                      "echo ADMIN_SECRET=$(echo ${ADMIN_SECRET_B64} | base64 -d) | sudo tee -a /opt/gamesta/.env",
+                      "sudo docker compose -f /opt/gamesta/docker-compose.ec2.yml --env-file /opt/gamesta/.env up -d --build --remove-orphans",
+                      "sudo docker ps"
+                    ]
+                  }
+                  EOF
+                - |
+                  COMMAND_ID=$(aws ssm send-command \
+                    --instance-ids "$EC2_INSTANCE_ID" \
+                    --document-name "AWS-RunShellScript" \
+                    --comment "Gamesta lite deploy from CodeBuild" \
+                    --parameters file://ssm-commands.json \
+                    --query "Command.CommandId" \
+                    --output text)
+                - echo SSM command sent with ID $COMMAND_ID
+                - |
+                  for i in $(seq 1 60); do
+                    STATUS=$(aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$EC2_INSTANCE_ID" --query "Status" --output text 2>/dev/null || echo "Pending")
+                    echo "SSM status: $STATUS"
+                    if [ "$STATUS" = "Success" ]; then
+                      break
+                    fi
+                    if [ "$STATUS" = "Failed" ] || [ "$STATUS" = "Cancelled" ] || [ "$STATUS" = "TimedOut" ]; then
+                      aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$EC2_INSTANCE_ID" --query "StandardErrorContent" --output text || true
+                      exit 1
+                    fi
+                    sleep 10
+                  done
+                - aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$EC2_INSTANCE_ID" --query "StandardOutputContent" --output text || true
+
+          artifacts:
+            files:
+              - '**/*'
+            discard-paths: yes
 
   Pipeline:
     Type: AWS::CodePipeline::Pipeline
