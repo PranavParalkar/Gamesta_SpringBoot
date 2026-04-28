@@ -8,6 +8,23 @@ Parameters:
   EnvironmentName:
     Type: String
     Default: lite
+
+  # ── Domain config ────────────────────────────────────────────────────────────
+  # The S3 bucket MUST be named exactly the same as the www subdomain so that
+  # Hostinger CNAME → S3 website endpoint resolves correctly.
+  FrontendDomain:
+    Type: String
+    Default: www.gamesta.in
+    Description: >
+      The www subdomain for the frontend (e.g. www.gamesta.in).
+      The S3 bucket will be named exactly this value so that the Hostinger
+      CNAME record resolves correctly.
+  ApiDomain:
+    Type: String
+    Default: api.gamesta.in
+    Description: API subdomain — used only for documentation/output, not created here.
+
+  # ── Infrastructure config ─────────────────────────────────────────────────
   VpcId:
     Type: AWS::EC2::VPC::Id
     Description: VPC where EC2 instance will be launched
@@ -23,12 +40,12 @@ Parameters:
       - t3.small
   KeyName:
     Type: String
-    Description: Optional EC2 key pair for SSH
+    Description: Optional EC2 key pair for SSH access (leave blank to use SSM only)
     Default: ''
   AllowedSshCidr:
     Type: String
     Default: 0.0.0.0/0
-    Description: Restrict this in production
+    Description: Restrict to your IP /32 in production
   AllowedHttpCidr:
     Type: String
     Default: 0.0.0.0/0
@@ -46,7 +63,9 @@ Resources:
   LiteFrontendBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub ${ProjectName}-${EnvironmentName}-${AWS::AccountId}-${AWS::Region}-frontend-lite
+      # Bucket name MUST match the CNAME hostname (www.gamesta.in) for Hostinger DNS to work.
+      # S3 checks the Host header on incoming requests and routes to the matching bucket name.
+      BucketName: !Ref FrontendDomain
       WebsiteConfiguration:
         IndexDocument: index.html
         ErrorDocument: index.html
@@ -158,9 +177,11 @@ Resources:
           #!/bin/bash
           set -e
           dnf update -y
-          dnf install -y docker docker-compose-plugin git unzip
+          dnf install -y docker docker-compose-plugin git unzip amazon-ssm-agent
           systemctl enable docker
           systemctl start docker
+          systemctl enable amazon-ssm-agent
+          systemctl start amazon-ssm-agent
           usermod -aG docker ec2-user
           mkdir -p /opt/gamesta
 
@@ -178,11 +199,21 @@ Resources:
 Outputs:
   Ec2InstanceId:
     Value: !Ref LiteEc2Instance
+    Description: EC2 instance ID (needed for CI/CD stack parameter)
   Ec2PublicIp:
     Value: !Ref LiteEc2Eip
-  Ec2PublicDns:
-    Value: !GetAtt LiteEc2Instance.PublicDnsName
+    Description: Elastic IP — paste this as the Hostinger A record value for api.gamesta.in
   FrontendBucketName:
     Value: !Ref LiteFrontendBucket
+    Description: S3 bucket name (= www.gamesta.in) — needed for CI/CD stack parameter
   FrontendWebsiteUrl:
     Value: !GetAtt LiteFrontendBucket.WebsiteURL
+    Description: Full S3 website URL — use this to test before DNS propagates
+  HostingerCnameValue:
+    Value: !Select [2, !Split ["/", !GetAtt LiteFrontendBucket.WebsiteURL]]
+    Description: >
+      Exact value to paste into Hostinger CNAME for www.gamesta.in.
+      Example: www.gamesta.in.s3-website-ap-south-1.amazonaws.com
+  HostingerARecordValue:
+    Value: !Ref LiteEc2Eip
+    Description: Exact value to paste into Hostinger A record for api.gamesta.in

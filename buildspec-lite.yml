@@ -1,81 +1,107 @@
 version: 0.2
 
+# Environment variables injected by CodeBuild project (from 07-lite-cicd.yml):
+#   FRONTEND_BUCKET   - S3 bucket name for static frontend
+#   API_BASE_URL      - e.g. http://api.gamesta.in
+#   EC2_INSTANCE_ID   - i-xxxxxxxxxxxxxxxxx
+#   REPO_CLONE_URL    - https://github.com/PranavParalkar/Gamesta_SpringBoot.git
+#   BRANCH_NAME       - main
+#   DB_PASSWORD       - MySQL root password
+#   ADMIN_SECRET      - app admin secret
+
 phases:
   install:
     runtime-versions:
       nodejs: 20
-      java: corretto17
     commands:
-      - echo Installing dependencies for frontend...
+      - echo "=== Installing frontend dependencies ==="
       - cd src/frontend
       - npm ci --no-audit --no-fund
       - cd ../..
+
   build:
     commands:
-      - echo Building frontend with API URL $API_BASE_URL
+      - echo "=== Building frontend (VITE_API_BASE_URL=$API_BASE_URL) ==="
       - cd src/frontend
-      - export VITE_API_BASE_URL=$API_BASE_URL
-      - npm run build
+      - VITE_API_BASE_URL="$API_BASE_URL" npm run build
       - cd ../..
+
   post_build:
     commands:
-      - echo Syncing frontend dist to S3 bucket $FRONTEND_BUCKET
-      - aws s3 sync src/frontend/dist s3://$FRONTEND_BUCKET --delete
-      - echo Preparing backend deployment command for EC2 instance $EC2_INSTANCE_ID
-      - echo Verifying EC2 instance is online in SSM...
+      - echo "=== Syncing frontend to S3 bucket $FRONTEND_BUCKET ==="
+      - aws s3 sync src/frontend/dist/ s3://$FRONTEND_BUCKET --delete
+
+      - echo "=== Verifying EC2 is registered in SSM ==="
       - |
-        MANAGED_INSTANCE_ID=$(aws ssm describe-instance-information \
-          --filters "Key=InstanceIds,Values=$EC2_INSTANCE_ID" \
-          --query "InstanceInformationList[0].InstanceId" \
-          --output text 2>/dev/null || true)
-      - |
-        if [ -z "$MANAGED_INSTANCE_ID" ] || [ "$MANAGED_INSTANCE_ID" = "None" ]; then
-          echo "EC2 instance $EC2_INSTANCE_ID is not available in SSM."
-          echo "Check: instance profile has AmazonSSMManagedInstanceCore, instance is running, and outbound internet access works."
+        for i in $(seq 1 12); do
+          MANAGED=$(aws ssm describe-instance-information \
+            --filters "Key=InstanceIds,Values=$EC2_INSTANCE_ID" \
+            --query "InstanceInformationList[0].InstanceId" \
+            --output text 2>/dev/null || echo "None")
+          if [ "$MANAGED" != "None" ] && [ -n "$MANAGED" ]; then
+            echo "EC2 instance $EC2_INSTANCE_ID is registered in SSM."
+            break
+          fi
+          echo "Waiting for SSM registration... attempt $i/12"
+          sleep 10
+        done
+        if [ "$MANAGED" = "None" ] || [ -z "$MANAGED" ]; then
+          echo "ERROR: EC2 instance $EC2_INSTANCE_ID not found in SSM after 120s."
+          echo "Check: instance profile has AmazonSSMManagedInstanceCore and instance has outbound internet."
           exit 1
         fi
-      - DB_PASSWORD_B64=$(printf '%s' "$DB_PASSWORD" | base64 | tr -d '\n')
-      - ADMIN_SECRET_B64=$(printf '%s' "$ADMIN_SECRET" | base64 | tr -d '\n')
-      - |
-        cat > ssm-commands.json <<EOF
-        {
-          "commands": [
-            "set -e",
-            "sudo mkdir -p /opt/gamesta",
-            "if [ ! -d /opt/gamesta/.git ]; then sudo git clone ${REPO_CLONE_URL} /opt/gamesta; else sudo git -C /opt/gamesta fetch --all; fi",
-            "sudo git -C /opt/gamesta checkout ${BRANCH_NAME}",
-            "sudo git -C /opt/gamesta reset --hard origin/${BRANCH_NAME}",
-            "echo MYSQL_ROOT_PASSWORD=$(echo ${DB_PASSWORD_B64} | base64 -d) | sudo tee /opt/gamesta/.env",
-            "echo MYSQL_DATABASE=gamesta | sudo tee -a /opt/gamesta/.env",
-            "echo ADMIN_SECRET=$(echo ${ADMIN_SECRET_B64} | base64 -d) | sudo tee -a /opt/gamesta/.env",
-            "sudo docker compose -f /opt/gamesta/docker-compose.ec2.yml --env-file /opt/gamesta/.env up -d --build --remove-orphans",
-            "sudo docker ps"
-          ]
-        }
-        EOF
+
+      - echo "=== Sending deploy command to EC2 via SSM ==="
       - |
         COMMAND_ID=$(aws ssm send-command \
           --instance-ids "$EC2_INSTANCE_ID" \
           --document-name "AWS-RunShellScript" \
-          --comment "Gamesta lite deploy from CodeBuild" \
-          --parameters file://ssm-commands.json \
+          --comment "Gamesta deploy from CodeBuild" \
+          --parameters "commands=[
+            'set -e',
+            'sudo mkdir -p /opt/gamesta',
+            'if [ ! -d /opt/gamesta/.git ]; then sudo git clone $REPO_CLONE_URL /opt/gamesta; fi',
+            'sudo git -C /opt/gamesta fetch --all',
+            'sudo git -C /opt/gamesta checkout $BRANCH_NAME',
+            'sudo git -C /opt/gamesta reset --hard origin/$BRANCH_NAME',
+            'printf \"MYSQL_ROOT_PASSWORD=%s\nMYSQL_DATABASE=gamesta\nADMIN_SECRET=%s\n\" \"$DB_PASSWORD\" \"$ADMIN_SECRET\" | sudo tee /opt/gamesta/.env',
+            'sudo docker compose -f /opt/gamesta/docker-compose.ec2.yml --env-file /opt/gamesta/.env up -d --build --remove-orphans',
+            'sudo docker image prune -f',
+            'sudo docker ps'
+          ]" \
           --query "Command.CommandId" \
           --output text)
-      - echo SSM command sent with ID $COMMAND_ID
+        echo "SSM Command ID: $COMMAND_ID"
+
+      - echo "=== Polling SSM command status ==="
       - |
         for i in $(seq 1 60); do
-          STATUS=$(aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$EC2_INSTANCE_ID" --query "Status" --output text 2>/dev/null || echo "Pending")
-          echo "SSM status: $STATUS"
+          STATUS=$(aws ssm get-command-invocation \
+            --command-id "$COMMAND_ID" \
+            --instance-id "$EC2_INSTANCE_ID" \
+            --query "Status" --output text 2>/dev/null || echo "Pending")
+          echo "  Attempt $i/60: $STATUS"
           if [ "$STATUS" = "Success" ]; then
+            echo "Deploy succeeded."
             break
           fi
           if [ "$STATUS" = "Failed" ] || [ "$STATUS" = "Cancelled" ] || [ "$STATUS" = "TimedOut" ]; then
-            aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$EC2_INSTANCE_ID" --query "StandardErrorContent" --output text || true
+            echo "Deploy FAILED. SSM stderr:"
+            aws ssm get-command-invocation \
+              --command-id "$COMMAND_ID" \
+              --instance-id "$EC2_INSTANCE_ID" \
+              --query "StandardErrorContent" --output text || true
             exit 1
           fi
           sleep 10
         done
-      - aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$EC2_INSTANCE_ID" --query "StandardOutputContent" --output text || true
+
+      - echo "=== SSM command output ==="
+      - |
+        aws ssm get-command-invocation \
+          --command-id "$COMMAND_ID" \
+          --instance-id "$EC2_INSTANCE_ID" \
+          --query "StandardOutputContent" --output text || true
 
 artifacts:
   files:

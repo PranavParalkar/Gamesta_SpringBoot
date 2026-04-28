@@ -8,8 +8,6 @@ RUN npm install
 COPY src/frontend .
 RUN npm run build
 
-FROM mysql:8.0 
-
 # ---------- Backend build ----------
 FROM maven:3.9-eclipse-temurin-17 AS backend-builder
 WORKDIR /app
