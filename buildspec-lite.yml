@@ -59,8 +59,9 @@ phases:
           --comment "Gamesta deploy from CodeBuild" \
           --parameters "commands=[
             'set -e',
-            'sudo dnf install -y git docker docker-compose-plugin 2>/dev/null || sudo yum install -y git docker 2>/dev/null || true',
+            'sudo dnf install -y git 2>/dev/null || sudo yum install -y git 2>/dev/null || true',
             'sudo systemctl start docker 2>/dev/null || true',
+            'docker compose version',
             'sudo mkdir -p /opt/gamesta',
             'if [ ! -d /opt/gamesta/.git ]; then sudo git clone $REPO_CLONE_URL /opt/gamesta; fi',
             'sudo git -C /opt/gamesta fetch --all',
