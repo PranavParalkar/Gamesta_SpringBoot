@@ -61,6 +61,8 @@ phases:
             'set -e',
             'sudo dnf install -y git 2>/dev/null || sudo yum install -y git 2>/dev/null || true',
             'sudo systemctl start docker 2>/dev/null || true',
+            'sudo mkdir -p /usr/local/lib/docker/cli-plugins',
+            'if ! docker compose version 2>/dev/null; then sudo curl -fsSL https://github.com/docker/compose/releases/download/v2.27.1/docker-compose-linux-x86_64 -o /usr/local/lib/docker/cli-plugins/docker-compose && sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose; fi',
             'docker compose version',
             'sudo mkdir -p /opt/gamesta',
             'if [ ! -d /opt/gamesta/.git ]; then sudo git clone $REPO_CLONE_URL /opt/gamesta; fi',

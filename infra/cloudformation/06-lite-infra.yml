@@ -177,12 +177,16 @@ Resources:
           #!/bin/bash
           set -e
           dnf update -y
-          dnf install -y docker docker-compose-plugin git unzip amazon-ssm-agent
+          dnf install -y docker git unzip amazon-ssm-agent
           systemctl enable docker
           systemctl start docker
           systemctl enable amazon-ssm-agent
           systemctl start amazon-ssm-agent
           usermod -aG docker ec2-user
+          mkdir -p /usr/local/lib/docker/cli-plugins
+          curl -fsSL https://github.com/docker/compose/releases/download/v2.27.1/docker-compose-linux-x86_64 \
+            -o /usr/local/lib/docker/cli-plugins/docker-compose
+          chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
           mkdir -p /opt/gamesta
 
   LiteEc2Eip:
