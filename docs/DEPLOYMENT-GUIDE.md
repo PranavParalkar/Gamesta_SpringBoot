@@ -65,6 +65,8 @@ CodePipeline ──► CodeBuild
 6. Wait for status to show **Available**
 7. Copy the full **Connection ARN** — you will need it in Step 4
 
+arn:aws:codeconnections:ap-south-1:904053119731:connection/3dbcf855-0a31-442a-a903-4f905d99c1c5
+
 > ⚠️ If it stays "Pending", click the connection name → **Update pending connection** and complete the OAuth flow in the popup.
 
 ---
@@ -76,6 +78,9 @@ CodePipeline ──► CodeBuild
 3. Go to **Subnets**
 4. Find any subnet in `ap-south-1` where **Auto-assign public IPv4 = Yes**
 5. Copy its **Subnet ID** (looks like `subnet-0abc12345678`)
+
+vpc-017380849c2f43bc2
+subnet-012bb10782dd289b3
 
 ---
 
@@ -107,10 +112,15 @@ CodePipeline ──► CodeBuild
 | Output Key | What It Is | Use |
 |------------|-----------|-----|
 | `Ec2InstanceId` | e.g. `i-0abc1234567890abc` | Needed for Stack B |
+i-03e4396eec8884a87
 | `Ec2PublicIp` | e.g. `13.233.x.x` | Paste into Hostinger DNS |
+43.204.9.40
 | `FrontendBucketName` | `www.gamesta.in` | Needed for Stack B |
+www.gamesta.in
 | `HostingerCnameValue` | e.g. `www.gamesta.in.s3-website-ap-south-1.amazonaws.com` | Paste into Hostinger DNS |
+www.gamesta.in.s3-website-ap-south-1.amazonaws.com
 | `FrontendWebsiteUrl` | `http://www.gamesta.in.s3-website-ap-south-1.amazonaws.com` | Test before DNS propagates |
+http://www.gamesta.in.s3-website-ap-south-1.amazonaws.com
 
 > ⚠️ Wait **3–4 minutes** after CREATE_COMPLETE before running the pipeline — the EC2 SSM agent needs time to register.
 
